@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+
+.site-layout .site-layout-background {
+  background: #fff;
+}
+
+.logo {
+  height: 32px;
+  margin: 16px;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.ant-layout {
+  min-height: 100vh;
+}
+
+.ant-layout-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.notification-badge {
+  cursor: pointer;
+  margin-right: 24px;
+}
+.parent-portal {
+  padding: 16px;
+}
+
+.children-selector .ant-tabs-card > .ant-tabs-nav .ant-tabs-tab {
+  padding: 8px 16px;
+}
+
+.children-selector .ant-tabs-tab + .ant-tabs-tab {
+  margin-left: 8px;
+}
+
+.grade-summary {
+  margin-top: 16px;
+}
+
+.attendance-summary h4 {
+  margin-bottom: 8px;
+}
+.register-form .ant-form-item-label {
+  font-weight: 500;
+}
+
+.register-form .ant-divider {
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 14px;
+}
+
+.register-form .ant-input-affix-wrapper {
+  padding: 8px 11px;
+}
+
+.register-form .ant-btn-primary {
+  height: 40px;
+  font-weight: 500;
+}
+
+/* css for notification with ws */
+.notification-center {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 1000;
+}
+
+.connection-status {
+  padding: 8px 16px;
+  border-radius: 4px;
+  color: #fff;
+}
+
+.connection-status.connected {
+  background-color: #52c41a; /* green */
+}
+.connection-status.disconnected {
+  background-color: #f5222d; /* red */
+}
+select, div{
+  color: black;
+}

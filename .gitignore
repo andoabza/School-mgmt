@@ -1,0 +1,79 @@
+### Node.js ###
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build artifacts
+dist/
+build/
+.next/
+out/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Cache
+.cache/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnpm-debug.log
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Misc
+.DS_Store
+*.tgz
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+### Vite ###
+*.local
+.cache/
+.temp/
+
+### React ###
+coverage/
+*.swp
+.idea/
+
+### Docker ###
+# Ignore Docker Compose files that might contain secrets
+docker-compose.override.yml
+docker-compose.*.yml
+
+# Docker build context
+.dockerignore
+docker-data/
+
+### PostgreSQL ###
+# Local PostgreSQL data files (if mounted locally)
+postgres-data/
+
+### Testing ###
+/junit.xml
+/coverage/
+/nyc_output/
+
+### IDE ###
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

@@ -1,0 +1,65 @@
+services:
+  db:
+    image: postgres
+    container_name: school-db
+    environment:
+      POSTGRES_DB: school_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: root
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - school-data:/var/lib/postgresql/data
+    networks:
+      - school-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  
+  redis:
+    image: redis:alpine
+    healthcheck:
+      test: [ "CMD", "redis-cli", "--raw", "incr", "ping" ]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+    networks:
+      - school-net
+
+  backend:
+    build: ./backend
+    container_name: school-backend
+    environment:
+      REDIS_URL: redis://redis:6379
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: school_db
+      DB_USER: postgres
+      DB_PASSWORD: root
+      JWT_SECRET: 0f1144d0ba35d8fb512ba1f65c58c55fa41e8e897a49066b5fa5081f84c15ec6
+    ports:
+      - "3000:3000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    networks:
+      - school-net
+
+  frontend:
+    build: ./frontend
+    container_name: school-frontend
+    ports:
+      - "80:80"
+    networks:
+      - school-net
+
+networks:
+  school-net:
+    driver: bridge
+
+volumes:
+  school-data:
