@@ -132,7 +132,6 @@ const AttendanceTracker = () => {
 
   // Filter students
   const filteredStudents = useMemo(() => {
-    if (students.length > 1) {
     return students.filter(student => {
       const matchesSearch = 
         `${student.first_name} ${student.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -143,8 +142,6 @@ const AttendanceTracker = () => {
       
       return matchesSearch && matchesStatus;
     });
-  }
-  return attendance?.status;
   }, [students, searchTerm, statusFilter, attendance]);
 
   // Calculate attendance statistics
@@ -268,7 +265,7 @@ const AttendanceTracker = () => {
       
       if (user?.role === 'student') {
         const res = await api.get(`/users/me`);
-        setStudents(res.data);
+        setStudents([res.data]);
         
         const historyRes = await api.get(`/attendance/student/${user.id}?start=${dateRange.start}&end=${dateRange.end}`);
         setStudentAttendanceHistory(historyRes.data);
@@ -315,7 +312,6 @@ const AttendanceTracker = () => {
       
       const res = await api.get(endpoint);
       if (res.data) {
-        console.log(re.data);
         setExistingAttendance(res.data);
         setRemark(res.data.remark || "");
         
@@ -884,8 +880,8 @@ const AttendanceTracker = () => {
                     <div className="mt-4 pt-4 border-t border-gray-200">
                       <h4 className="font-medium mb-2">Recent Attendance</h4>
                       <div className="grid grid-cols-7 gap-1">
-                        {Array.apply(Array(7), null).map((_, i) => {
-                          const date = moment(i, 'e').startOf('week').isoWeekday(i + 1).format('YYYY-MM-DD');
+                        {Array.from({ length: 7 }).map((_, i) => {
+                          const date = moment().subtract(i, 'days').format('YYYY-MM-DD');
                           const historyItem = findAttendanceRecord(student.id, date);
                           const status = historyItem?.status || 'not recorded';
                           const statusInfo = statusOptions.find(opt => opt.value === status) || 
@@ -922,251 +918,323 @@ const AttendanceTracker = () => {
   );
 
   // Render student view
-  const renderStudentView = () => (
-    <div className="bg-white rounded-lg shadow-sm p-6">
-      {students.length > 0 ? (
-        <>
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-            <div className="flex items-center">
-              <div className="bg-gray-200 border-2 border-dashed rounded-xl w-16 h-16 mr-4" />
-              <div>
-                <h2 className="text-xl font-bold">
-                  {students.first_name} {students.last_name}
-                </h2>
-                <p className="text-gray-600">ID: {students.student_id || 'N/A'} | Grade {students.grade_level}</p>
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="text-lg font-semibold">
-                {moment(selectedDate).format('dddd, MMMM D, YYYY')}
-              </div>
-              <div className="text-gray-600">
-                {classes.find(c => c.id === selectedClass)?.name || 'Class not selected'}
-              </div>
-            </div>
-          </div>
+  const renderStudentView = () => {
+    if (loading) {
+      return (
+        <div className="flex justify-center items-center p-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+        </div>
+      );
+    }
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h3 className="font-medium text-gray-900 mb-2">Today's Status</h3>
-              {existingAttendance && existingAttendance.records.length > 0 ? (
-                <div className="flex items-center">
-                  {statusOptions.map(option => {
-                    if (option.value === existingAttendance.records[0].status) {
-                      return (
-                        <div key={option.value} className="flex items-center">
-                          <div 
-                            className="h-10 w-10 rounded-full flex items-center justify-center mr-2"
-                            style={{ 
-                              backgroundColor: `${option.color}20`, 
-                              border: `1px solid ${option.color}` 
-                            }}
-                          >
-                            {option.icon}
-                          </div>
-                          <div>
-                            <div className="font-medium" style={{ color: option.color }}>
-                              {option.label}
+    const currentStudent = students.length > 0 ? students[0] : null;
+    const studentAttendance = currentStudent 
+      ? studentAttendanceHistory.filter(item => item.student_id === currentStudent?.id)
+      : [];
+
+    return (
+      <div className="bg-white rounded-lg shadow-sm p-6">
+        {currentStudent ? (
+          <>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+              <div className="flex items-center">
+                <div className="bg-gray-200 border-2 border-dashed rounded-xl w-16 h-16 mr-4" />
+                <div>
+                  <h2 className="text-xl font-bold">
+                    {currentStudent.first_name} {currentStudent.last_name}
+                  </h2>
+                  <p className="text-gray-600">ID: {currentStudent.student_id || 'N/A'} | Grade {currentStudent.grade_level}</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-lg font-semibold">
+                  {moment(selectedDate).format('dddd, MMMM D, YYYY')}
+                </div>
+                <div className="text-gray-600">
+                  {classes.find(c => c.id === selectedClass)?.name || 'Class not selected'}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="font-medium text-gray-900 mb-2">Today's Status</h3>
+                {existingAttendance && existingAttendance.records && existingAttendance.records.length > 0 ? (
+                  <div className="flex items-center">
+                    {statusOptions.map(option => {
+                      if (option.value === existingAttendance.records[0].status) {
+                        return (
+                          <div key={option.value} className="flex items-center">
+                            <div 
+                              className="h-10 w-10 rounded-full flex items-center justify-center mr-2"
+                              style={{ 
+                                backgroundColor: `${option.color}20`, 
+                                border: `1px solid ${option.color}` 
+                              }}
+                            >
+                              {option.icon}
                             </div>
-                            <div className="text-sm text-gray-600">
-                              {existingAttendance.records[0].details || 'No details'}
+                            <div>
+                              <div className="font-medium" style={{ color: option.color }}>
+                                {option.label}
+                              </div>
+                              <div className="text-sm text-gray-600">
+                                {existingAttendance.records[0].details || 'No details'}
+                              </div>
                             </div>
                           </div>
+                        );
+                      }
+                      return null;
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-gray-500">No attendance recorded for today</div>
+                )}
+              </div>
+
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="font-medium text-gray-900 mb-2">Attendance Stats</h3>
+                <div className="space-y-2">
+                  {studentAttendance.length > 0 ? (
+                    <>
+                      <div className="flex justify-between">
+                        <span>Present:</span>
+                        <span className="font-medium">
+                          {Math.round(
+                            (studentAttendance.filter(r => r.status === 'present').length / 
+                            studentAttendance.length) * 100
+                          )}% 
+                          ({studentAttendance.filter(r => r.status === 'present').length}/
+                          {studentAttendance.length} days)
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div 
+                          className="bg-green-600 h-2 rounded-full" 
+                          style={{ 
+                            width: `${Math.round(
+                              (studentAttendance.filter(r => r.status === 'present').length / 
+                              studentAttendance.length) * 100
+                            )}%` 
+                          }}
+                        ></div>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span>Absences: {studentAttendance.filter(r => r.status === 'absent').length}</span>
+                        <span>Late: {studentAttendance.filter(r => r.status === 'late').length}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-gray-500">No attendance data available</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="font-medium text-gray-900 mb-2">Recent Attendance</h3>
+                <div className="grid grid-cols-7 gap-1">
+                  {Array.from({ length: 7 }).map((_, i) => {
+                    const date = moment().subtract(i, 'days').format('YYYY-MM-DD');
+                    const historyItem = studentAttendance.find(item => item.date === date);
+                    const status = historyItem?.status || 'not recorded';
+                    const statusInfo = statusOptions.find(opt => opt.value === status) || 
+                                    { color: '#9CA3AF', icon: <FiCalendar /> };
+                    
+                    return (
+                      <div key={date} className="text-center">
+                        <div className="text-xs text-gray-500">{moment(date).format('ddd')}</div>
+                        <div 
+                          className="mx-auto h-6 w-6 rounded-full flex items-center justify-center"
+                          style={{ 
+                            backgroundColor: `${statusInfo.color}20`, 
+                            border: `1px solid ${statusInfo.color}` 
+                          }}
+                        >
+                          {statusInfo.icon}
                         </div>
-                      );
-                    }
-                    return null;
+                        <div className="text-xs mt-1 capitalize">
+                          {status}
+                        </div>
+                      </div>
+                    );
                   })}
                 </div>
-              ) : (
-                <div className="text-gray-500">No attendance recorded for today</div>
-              )}
-            </div>
-
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h3 className="font-medium text-gray-900 mb-2">Attendance Stats</h3>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span>Present:</span>
-                  <span className="font-medium">75% (15/20 days)</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div className="bg-green-600 h-2 rounded-full" style={{ width: '75%' }}></div>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span>Absences: 3</span>
-                  <span>Late: 2</span>
-                </div>
               </div>
             </div>
-
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h3 className="font-medium text-gray-900 mb-2">Recent Attendance</h3>
-              <div className="grid grid-cols-7 gap-1">
-                {Array.from({ length: 7 }).map((_, i) => {
-                  const date = moment().subtract(i, 'days').format('YYYY-MM-DD');
-                  const historyItem = findAttendanceRecord(students[0].id, date);
-                  const status = historyItem?.status || 'not recorded';
-                  const statusInfo = statusOptions.find(opt => opt.value === status) || 
-                                  { color: '#9CA3AF', icon: <FiCalendar /> };
-                  
-                  return (
-                    <div key={date} className="text-center">
-                      <div className="text-xs text-gray-500">{moment(date).format('ddd')}</div>
-                      <div 
-                        className="mx-auto h-6 w-6 rounded-full flex items-center justify-center"
-                        style={{ 
-                          backgroundColor: `${statusInfo.color}20`, 
-                          border: `1px solid ${statusInfo.color}` 
-                        }}
-                      >
-                        {statusInfo.icon}
-                      </div>
-                      <div className="text-xs mt-1 capitalize">
-                        {status}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+          </>
+        ) : (
+          <div className="text-center py-8">
+            <FiUser className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+            <h3 className="text-lg font-medium text-gray-900">No student information found</h3>
           </div>
-        </>
-      ) : (
-        <div className="text-center py-8">
-          <FiUser className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-          <h3 className="text-lg font-medium text-gray-900">No student information found</h3>
-        </div>
-      )}
-    </div>
-  );
+        )}
+      </div>
+    );
+  };
 
   // Render parent view
-  const renderParentView = () => (
-    <div className="bg-white rounded-lg shadow-sm p-6">
-      {children.length === 0 ? (
-        <div className="text-center py-8">
-          <FiUser className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-          <h3 className="text-lg font-medium text-gray-900">No children registered</h3>
-          <p className="mt-1 text-sm text-gray-500">Please contact the school to register your children</p>
+  const renderParentView = () => {
+    if (loading) {
+      return (
+        <div className="flex justify-center items-center p-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
         </div>
-      ) : students.length === 0 ? (
-        <div className="text-center py-8">
-          <FiUser className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-          <h3 className="text-lg font-medium text-gray-900">No attendance data available</h3>
-          <p className="mt-1 text-sm text-gray-500">Select a child and class to view attendance</p>
-        </div>
-      ) : (
-        <>
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-            <div className="flex items-center">
-              <div className="bg-gray-200 border-2 border-dashed rounded-xl w-16 h-16 mr-4" />
-              <div>
-                <h2 className="text-xl font-bold">
-                  {students[0].first_name} {students[0].last_name}
-                </h2>
-                <p className="text-gray-600">ID: {students[0].student_id || 'N/A'} | Grade {students[0].grade_level}</p>
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="text-lg font-semibold">
-                {moment(selectedDate).format('dddd, MMMM D, YYYY')}
-              </div>
-              <div className="text-gray-600">
-                {classes.find(c => c.id === selectedClass)?.name || 'Class not selected'}
-              </div>
-            </div>
-          </div>
+      );
+    }
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h3 className="font-medium text-gray-900 mb-2">Today's Status</h3>
-              {existingAttendance && existingAttendance.records.length > 0 ? (
-                <div className="flex items-center">
-                  {statusOptions.map(option => {
-                    if (option.value === existingAttendance.records[0].status) {
-                      return (
-                        <div key={option.value} className="flex items-center">
-                          <div 
-                            className="h-10 w-10 rounded-full flex items-center justify-center mr-2"
-                            style={{ 
-                              backgroundColor: `${option.color}20`, 
-                              border: `1px solid ${option.color}` 
-                            }}
-                          >
-                            {option.icon}
-                          </div>
-                          <div>
-                            <div className="font-medium" style={{ color: option.color }}>
-                              {option.label}
+    const currentStudent = students.length > 0 ? students[0] : null;
+    const studentAttendance = currentStudent 
+      ? studentAttendanceHistory.filter(item => item.student_id === currentStudent?.id)
+      : [];
+
+    return (
+      <div className="bg-white rounded-lg shadow-sm p-6">
+        {children.length === 0 ? (
+          <div className="text-center py-8">
+            <FiUser className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+            <h3 className="text-lg font-medium text-gray-900">No children registered</h3>
+            <p className="mt-1 text-sm text-gray-500">Please contact the school to register your children</p>
+          </div>
+        ) : students.length === 0 ? (
+          <div className="text-center py-8">
+            <FiUser className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+            <h3 className="text-lg font-medium text-gray-900">No attendance data available</h3>
+            <p className="mt-1 text-sm text-gray-500">Select a child and class to view attendance</p>
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+              <div className="flex items-center">
+                <div className="bg-gray-200 border-2 border-dashed rounded-xl w-16 h-16 mr-4" />
+                <div>
+                  <h2 className="text-xl font-bold">
+                    {currentStudent.first_name} {currentStudent.last_name}
+                  </h2>
+                  <p className="text-gray-600">ID: {currentStudent.student_id || 'N/A'} | Grade {currentStudent.grade_level}</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-lg font-semibold">
+                  {moment(selectedDate).format('dddd, MMMM D, YYYY')}
+                </div>
+                <div className="text-gray-600">
+                  {classes.find(c => c.id === selectedClass)?.name || 'Class not selected'}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="font-medium text-gray-900 mb-2">Today's Status</h3>
+                {existingAttendance && existingAttendance.records && existingAttendance.records.length > 0 ? (
+                  <div className="flex items-center">
+                    {statusOptions.map(option => {
+                      if (option.value === existingAttendance.records[0].status) {
+                        return (
+                          <div key={option.value} className="flex items-center">
+                            <div 
+                              className="h-10 w-10 rounded-full flex items-center justify-center mr-2"
+                              style={{ 
+                                backgroundColor: `${option.color}20`, 
+                                border: `1px solid ${option.color}` 
+                              }}
+                            >
+                              {option.icon}
                             </div>
-                            <div className="text-sm text-gray-600">
-                              {existingAttendance.records[0].details || 'No details'}
+                            <div>
+                              <div className="font-medium" style={{ color: option.color }}>
+                                {option.label}
+                              </div>
+                              <div className="text-sm text-gray-600">
+                                {existingAttendance.records[0].details || 'No details'}
+                              </div>
                             </div>
                           </div>
+                        );
+                      }
+                      return null;
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-gray-500">No attendance recorded for today</div>
+                )}
+              </div>
+
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="font-medium text-gray-900 mb-2">Attendance Stats</h3>
+                <div className="space-y-2">
+                  {studentAttendance.length > 0 ? (
+                    <>
+                      <div className="flex justify-between">
+                        <span>Present:</span>
+                        <span className="font-medium">
+                          {Math.round(
+                            (studentAttendance.filter(r => r.status === 'present').length / 
+                            studentAttendance.length) * 100
+                          )}% 
+                          ({studentAttendance.filter(r => r.status === 'present').length}/
+                          {studentAttendance.length} days)
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div 
+                          className="bg-green-600 h-2 rounded-full" 
+                          style={{ 
+                            width: `${Math.round(
+                              (studentAttendance.filter(r => r.status === 'present').length / 
+                              studentAttendance.length) * 100
+                            )}%` 
+                          }}
+                        ></div>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span>Absences: {studentAttendance.filter(r => r.status === 'absent').length}</span>
+                        <span>Late: {studentAttendance.filter(r => r.status === 'late').length}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-gray-500">No attendance data available</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h3 className="font-medium text-gray-900 mb-2">Recent Attendance</h3>
+                <div className="grid grid-cols-7 gap-1">
+                  {Array.from({ length: 7 }).map((_, i) => {
+                    const date = moment().subtract(i, 'days').format('YYYY-MM-DD');
+                    const historyItem = studentAttendance.find(item => item.date === date);
+                    const status = historyItem?.status || 'not recorded';
+                    const statusInfo = statusOptions.find(opt => opt.value === status) || 
+                                    { color: '#9CA3AF', icon: <FiCalendar /> };
+                    
+                    return (
+                      <div key={date} className="text-center">
+                        <div className="text-xs text-gray-500">{moment(date).format('ddd')}</div>
+                        <div 
+                          className="mx-auto h-6 w-6 rounded-full flex items-center justify-center"
+                          style={{ 
+                            backgroundColor: `${statusInfo.color}20`, 
+                            border: `1px solid ${statusInfo.color}` 
+                          }}
+                        >
+                          {statusInfo.icon}
                         </div>
-                      );
-                    }
-                    return null;
+                        <div className="text-xs mt-1 capitalize">
+                          {status}
+                        </div>
+                      </div>
+                    );
                   })}
                 </div>
-              ) : (
-                <div className="text-gray-500">No attendance recorded for today</div>
-              )}
-            </div>
-
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h3 className="font-medium text-gray-900 mb-2">Attendance Stats</h3>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span>Present:</span>
-                  <span className="font-medium">80% (16/20 days)</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div className="bg-green-600 h-2 rounded-full" style={{ width: '80%' }}></div>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span>Absences: 2</span>
-                  <span>Late: 2</span>
-                </div>
               </div>
             </div>
-
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h3 className="font-medium text-gray-900 mb-2">Recent Attendance</h3>
-              <div className="grid grid-cols-7 gap-1">
-                {Array.from({ length: 7 }).map((_, i) => {
-                  const date = moment().subtract(i, 'days').format('YYYY-MM-DD');
-                  const historyItem = findAttendanceRecord(students[0].id, date);
-                  const status = historyItem?.status || 'not recorded';
-                  const statusInfo = statusOptions.find(opt => opt.value === status) || 
-                                  { color: '#9CA3AF', icon: <FiCalendar /> };
-                  
-                  return (
-                    <div key={date} className="text-center">
-                      <div className="text-xs text-gray-500">{moment(date).format('ddd')}</div>
-                      <div 
-                        className="mx-auto h-6 w-6 rounded-full flex items-center justify-center"
-                        style={{ 
-                          backgroundColor: `${statusInfo.color}20`, 
-                          border: `1px solid ${statusInfo.color}` 
-                        }}
-                      >
-                        {statusInfo.icon}
-                      </div>
-                      <div className="text-xs mt-1 capitalize">
-                        {status}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
+          </>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="max-w-7xl mx-auto p-4">
@@ -1229,7 +1297,8 @@ const AttendanceTracker = () => {
             </select>
           )}
           
-          {/*{(user?.role === 'parent') && classes.length > 0 && (
+          {/* Class selection for parent */}
+          {(user?.role === 'parent') && classes.length > 0 && (
             <select 
               value={selectedClass || ''}
               onChange={(e) => setSelectedClass(e.target.value ? parseInt(e.target.value) : null)}
@@ -1243,9 +1312,8 @@ const AttendanceTracker = () => {
                 </option>
               ))}
             </select>
-          )}*/}
+          )}
           
-          {/* View mode selection */}
           {(user?.role === 'admin' || user?.role === 'teacher') && (
             <div className="flex items-center space-x-2">
               <button
