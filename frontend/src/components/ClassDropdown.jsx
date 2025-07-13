@@ -3,7 +3,6 @@ export default function ClassDropdown({ classes, currentUser, value, onChange })
   const filteredClasses = currentUser?.role === 'teacher' 
     ? classes.filter(c => c.teacher_id === currentUser.id)
     : classes;
-
   return (
     <select
       className="w-full p-2 border rounded"
@@ -13,7 +12,7 @@ export default function ClassDropdown({ classes, currentUser, value, onChange })
       <option value="">Select a class</option>
       {filteredClasses.map(cls => (
         <option key={cls.id} value={cls.id}>
-          {cls.name} - {cls.subject} (Teacher: {cls.teacher_name})
+          {cls.name} {/*- {cls.subject} (Teacher: {cls.teacher_name})}*/}
         </option>
       ))}
     </select>

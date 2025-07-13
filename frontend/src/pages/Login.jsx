@@ -34,21 +34,10 @@ export default function Login() {
 
     const handleSubmit = async (e) => {
       e.preventDefault();
-      e.stopPropagation();
-
       if (!validateForm()) return;
-
       setLoading(true);
-      try {
-        const success = await login(formData);
-        if (!success) {
-          // Clear password field on failure
-          setFormData(prev => ({ ...prev, password: '' }));
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
+      await login(formData);
+      };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-500 flex flex-col md:flex-row p-4 md:p-8">
@@ -82,7 +71,7 @@ export default function Login() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-10">
+          <form onSubmit={(e) => handleSubmit(e)} className="space-y-10">
             {/* Email Field */}
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
@@ -121,9 +110,6 @@ export default function Login() {
                 <label htmlFor="password" className="block text-sm font-medium text-gray-700">
                   Password
                 </label>
-                <a href="/forgot-password" className="text-sm text-blue-600 hover:text-blue-500">
-                  Forgot password?
-                </a>
               </div>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">

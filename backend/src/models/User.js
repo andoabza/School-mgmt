@@ -26,6 +26,23 @@ class UserModel {
     return rows[0];
   }
 
+  //get student by student_id
+  static async getByStudentId(id){
+    const query = `
+      SELECT u.*, 
+             s.student_id, s.grade_level, s.section,
+             t.subject,
+             p.id AS parent_id
+      FROM students s
+      LEFT JOIN users u ON s.id = u.id
+      LEFT JOIN teachers t ON u.id = t.id
+      LEFT JOIN parents p ON u.id = p.id
+      WHERE u.id = $1
+    `;
+    const { rows } = await pool.query(query, [id]);
+    return rows[0];
+  }
+
   // Create a new user
   static async create({ email, password, role, firstName, lastName }) {
     const hashedPassword = await bcrypt.hash(password, 12);
@@ -139,7 +156,7 @@ class UserModel {
              s.student_id, s.grade_level, s.section
       FROM users u
       LEFT JOIN students s ON u.id = s.id
-      WHERE u.role IN ('admin', 'teacher', 'student')
+      WHERE u.role IN ('admin', 'teacher', 'student', 'parent')
     `;
     
     const params = [];
@@ -151,6 +168,22 @@ class UserModel {
     query += ' ORDER BY u.role, u.last_name';
     
     const { rows } = await pool.query(query, params);
+    return rows;
+  }
+
+  static async getAllChildren(id) {
+    let query = `
+      // SELECT u.id, u.email, u.role, u.first_name, u.last_name, 
+      //        s.student_id, s.grade_level, s.section, p.*, sp.*
+      // FROM users u
+      // LEFT JOIN students s ON u.id = s.id
+      // LEFT JOIN parents p ON u.id = p.id
+      // LEFT JOIN student_parents sp ON u.id = s.id
+      SELECT * FROM student_parents sp
+      WHERE sp.parent_id = $1
+    `;
+    
+    const { rows } = await pool.query(query, id);
     return rows;
   }
 

@@ -28,6 +28,7 @@ router.post('/reset-password', auth(['admin', 'user']), UserController.resetPass
 // Delete user
 router.delete('/:id', auth(['admin']), UserController.deleteUser);
 
+
 // Protected route (any authenticated user)
 router.get('/profile', auth(), UserController.getProfile);
 

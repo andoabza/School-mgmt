@@ -53,6 +53,7 @@ const scheduleController = {
       
       res.status(201).json(newSchedule);
     } catch (error) {
+      console.log(error);
       res.status(500).json({ error: error.message });
     }
   },

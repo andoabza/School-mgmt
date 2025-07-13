@@ -218,7 +218,7 @@ const deleteUsers = async (userIds = selectedUsers) => {
         }
       } else {
         // Create new user
-        const response = await api.post('/auth/register', payload);
+        const response = await api.post('/users/register', payload);
         setUsers([...users, response.data]);
         setShowAddModal(false);
         setFormData({
@@ -237,6 +237,10 @@ const deleteUsers = async (userIds = selectedUsers) => {
         setNotification({ type: 'success', message: 'User created successfully' });
       }
     } catch (err) {
+      toast.error(err?.response?.data?.error);
+      setShowAddModal(false);
+      setCurrentStep(0);
+      setPreviewData(null);
       setNotification({
         type: 'error',
         message: err.response?.data?.message || previewData ? 'Failed to update user' : 'Failed to create user'
@@ -270,7 +274,6 @@ const deleteUsers = async (userIds = selectedUsers) => {
           type: 'error',
           message: error.message || 'Error parsing CSV file'
         });
-        console.log(error);
         toast.error(error.message || 'Error Parsing File');
         
         setFileLoading(false);
@@ -281,7 +284,7 @@ const deleteUsers = async (userIds = selectedUsers) => {
 
   const confirmBulkUpload = async () => {
     try {
-      const response = await api.post('/auth/bulk-register', 
+      const response = await api.post('/users/bulk-register', 
      {
         users: bulkUploadData.map(user => ({
           ...user}))
@@ -297,6 +300,7 @@ const deleteUsers = async (userIds = selectedUsers) => {
       toast.success(`${response.data.count} users created successfully`);
       
       } catch (err) {
+      toast.error(err?.response?.data?.error);
       setNotification({
         type: 'error',
         message: err.response?.data?.message || 'Failed to bulk create users'

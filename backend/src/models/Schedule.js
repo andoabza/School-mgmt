@@ -11,11 +11,16 @@ class Schedule {
         s.start_time, 
         s.end_time,
         c.id AS class_id,
+        c.grade_level,
         c.name AS class_name,
-        c.subject,
-        c.teacher_id
+        ct.subject,
+        c.teacher_id,
+        u.first_name,
+        u.last_name
       FROM schedules s
       JOIN classes c ON s.class_id = c.id
+      JOIN class_teachers ct ON ct.teacher_id = c.teacher_id
+      JOIN users u ON c.teacher_id = u.id
       ORDER BY s.day_of_week, s.start_time
     `;
     const { rows } = await pool.query(query);

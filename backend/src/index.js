@@ -4,14 +4,12 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import auth from './middleware/auth.js';
 import websocketService from './services/websocket.js';
+import morgan from 'morgan';
 
 dotenv.config();
 
 //import setupAdminRouter from '../routes/authRoutes.js'; 
-import setupAdminRouter from './routes/setupAdmin.js';
 import RegisterUsers from './routes/admin.js';
-import Users from './routes/users.js';
-import Admin from './routes/admin.js';
 import ClassRooms from './routes/classrooms.js';
 import Classes from './routes/classes.js';
 import Schedules from './routes/schedules.js';
@@ -19,9 +17,11 @@ import enrollmentRoutes from './routes/enrollmentRoutes.js';
 import attendanceRoutes from './routes/attendanceRoutes.js';
 import teacherRoutes from './routes/teacherRoutes.js';
 import userRoutes from './routes/userRoutes.js';
+import parentRoutes from './routes/parentRoutes.js';
 
 const app = express();
 
+app.use(morgan('dev'));
 // Initialize WebSocket server
 // app.use(auth())
 
@@ -37,16 +37,14 @@ dotenv.config();
 
 app.use(bodyParser.json());
 
-app.use('/api', setupAdminRouter);
-app.use('/api/admin', RegisterUsers);
 app.use('/api/users', userRoutes);
-app.use('/api/auth', Admin);
 app.use('/api/classes', Classes);
 app.use('/api/classrooms', ClassRooms);
 app.use('/api/schedules', Schedules);
 app.use('/api/enrollments', enrollmentRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/teacher', teacherRoutes);
+app.use('/api/parents', parentRoutes);
 
 
 

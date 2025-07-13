@@ -5,6 +5,6 @@ import enrollmentController from '../controllers/enrollmentController.js';
 router.post('/', enrollmentController.enrollStudent);
 router.delete('/:class_id/:student_id', enrollmentController.removeEnrollment);
 router.get('/class/:class_id/students', enrollmentController.getClassStudents);
-router.get('/:id', enrollmentController.getStudentEnrollments);
+router.get('/student/:id/classes', enrollmentController.getStudentEnrollments);
 
 export default router;

@@ -22,7 +22,7 @@ A modern web application built with Vite + React frontend, Node.js backend, Post
 
 Before you begin, ensure you have installed:
 
-- [Node.js](https://nodejs.org/) (v18+)
+- [Node.js](https://nodejs.org/) (v23+)
 - [Docker](https://www.docker.com/get-started/)
 - [Docker Compose](https://docs.docker.com/compose/install/)
 - [Git](https://git-scm.com/)
@@ -32,7 +32,7 @@ Before you begin, ensure you have installed:
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/your-username/project-name.git
+git clone https://github.com/andoabza/school-mgmt.git
 cd project-name
 ```
 

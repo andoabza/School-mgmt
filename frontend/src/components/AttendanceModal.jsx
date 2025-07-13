@@ -1,3 +1,8 @@
+import React, { useState, useEffect } from 'react';
+import Modal from './Modal';
+import api from '../axiosConfig';
+
+
 export default function AttendanceModal({ classId, date, onClose }) {
   const [students, setStudents] = useState([]);
   const [attendance, setAttendance] = useState({});

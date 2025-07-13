@@ -81,6 +81,7 @@ class Class {
         LEFT JOIN class_teachers ct ON c.id = ct.class_id
         LEFT JOIN users u ON ct.teacher_id = u.id
         GROUP BY c.id
+        ORDER BY c.grade_level, c.name
       `;
       const { rows } = await pool.query(query);
       return rows;

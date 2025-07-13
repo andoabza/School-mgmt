@@ -7,7 +7,6 @@ getTeacherClasses: async (req, res) => {
   try {
     const { teacher_id } = req.params;
     const classes = await Teacher.getClassesByTeacher(teacher_id);
-    console.log(classes);
     res.json(classes);
   } catch (error) {
     console.error(error);

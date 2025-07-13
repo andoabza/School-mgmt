@@ -159,7 +159,17 @@ class UserController {
   // Get current user
   static async getCurrentUser(req, res) {
     try {
-      const user = await UserModel.findById(req.user.id);
+      const authHeader = req.headers['authorization'];
+      const token = authHeader && authHeader.split(' ')[1];
+
+      if (!token) {
+        return res.status(401).json({ error: 'Authorization token required' });
+      }
+
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    
+
+      const user = await UserModel.getById(decoded.id);
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
       }
@@ -195,7 +205,7 @@ class UserController {
     try {
       // Students can only view their own data
       if (req.user.role === 'student') {
-        const user = await UserModel.findById(req.user.id);
+        const user = await UserModel.getById(req.user.id);
         return res.json([user]);
       }
 
@@ -232,7 +242,7 @@ class UserController {
     const defaultPassword = 'School@123';
     
     try {
-      const user = await UserModel.findById(id);
+      const user = await UserModel.getById(id);
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
       }
@@ -255,7 +265,7 @@ class UserController {
       res.status(500).json({ error: 'Password change failed' });
     }
   }
-
+  
   // Delete user
   static async deleteUser(req, res) {
     const id = req.params.id;

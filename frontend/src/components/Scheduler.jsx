@@ -56,13 +56,13 @@ export default function Scheduler() {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      let schedulesData = [], classList = [], teacherList = [], classroomsData = [];
+      let schedulesData = [], classList = [], teacherList = [], filteredList = [], classroomsData = [];
 
       if (isStudent) {
         // Student: fetch enrolled classes
         const enrolledRes = await api.get(`enrollments/${currentUser.id}`);
-        const enrolledClassIds = enrolledRes.data.map(e => e.class_id);
-        
+        const enrolledClassIds = enrolledRes.data.map(cls => cls.class_id)
+
         // Fetch schedules for enrolled classes
         const schedulesRes = await api.get('/schedules');
         schedulesData = schedulesRes.data.filter(s => 
@@ -70,13 +70,14 @@ export default function Scheduler() {
         );
 
         // Get classes from enrollment data
-        classList = enrolledRes.data.map(e => e.class);
+        classList = enrolledRes.data;
         
         // Fetch teachers and classrooms
         const [teachersRes, classroomsRes] = await Promise.all([
-          api.get('/users?role=teacher'),
+          api.get('/teacher'),
           api.get('/classrooms')
         ]);
+        filteredList = teachersRes.data.filter(teacher => teacher.classes.some(cls => enrolledClassIds.includes(cls.id)));
         teacherList = teachersRes.data;
         classroomsData = classroomsRes.data;
 
@@ -84,18 +85,18 @@ export default function Scheduler() {
         // Teacher: fetch classes taught by this teacher
         const classesRes = await api.get(`/teacher/${currentUser.id}/classes`);
         const teacherClassIds = classesRes.data.map(c => c.id);
-
+        
         // Fetch schedules for teacher's classes
         const schedulesRes = await api.get('/schedules');
         schedulesData = schedulesRes.data.filter(s => 
           teacherClassIds.includes(s.class_id)
         );
-
+        
         classList = classesRes.data;
 
         // Fetch teachers and classrooms
         const [teachersRes, classroomsRes] = await Promise.all([
-          api.get('/users?role=teacher'),
+          api.get('/teacher'),
           api.get('/classrooms')
         ]);
         teacherList = teachersRes.data;
@@ -125,7 +126,7 @@ export default function Scheduler() {
         // Get classes, teachers, and classrooms
         const [classesRes, teachersRes, classroomsRes] = await Promise.all([
           api.get('/classes'),
-          api.get('/users?role=teacher'),
+          api.get('/teacher'),
           api.get('/classrooms')
         ]);
         
@@ -140,7 +141,7 @@ export default function Scheduler() {
         const [schedulesRes, classesRes, teachersRes, classroomsRes] = await Promise.all([
           api.get('/schedules'),
           api.get('/classes'),
-          api.get('/users?role=teacher'),
+          api.get('/teacher'),
           api.get('/classrooms')
         ]);
         schedulesData = schedulesRes.data;
@@ -148,7 +149,6 @@ export default function Scheduler() {
         teacherList = teachersRes.data;
         classroomsData = classroomsRes.data;
       }
-
       // Create class-teacher map
       const classTeacherMapping = {};
       classList.forEach(cls => {
@@ -159,7 +159,7 @@ export default function Scheduler() {
       // Process events
       const processedEvents = schedulesData.map(sched => {
         const teacher = teacherList.find(t => t.id === sched.teacher_id);
-        const teacherName = teacher ? `${teacher.first_name} ${teacher.last_name}` : 'Unknown Teacher';
+        const teacherName = teacher ? `${teacher.first_name} ${teacher.last_name}` : '' ;
 
         const startDate = moment().day(sched.day_of_week).set({
           hour: moment(sched.start_time, 'HH:mm:ss').hour(),
@@ -194,9 +194,10 @@ export default function Scheduler() {
       setEvents(processedEvents);
       setResources(classroomsData);
       setClasses(classList);
-      setTeachers(teacherList);
+      setTeachers(teacherList || filteredList);
     } catch (error) {
       console.error('Error fetching data:', error);
+      console.log(error);
       toast.error('Failed to load schedule data');
     } finally {
       setIsLoading(false);
@@ -262,7 +263,8 @@ export default function Scheduler() {
   // Handle event selection
   const handleSelectEvent = (event) => {
     // Prevent teachers from editing other teachers' classes
-    if (isTeacher && event.teacherId !== currentUser.id) {
+    if (isTeacher &&
+        event.teacherId !== currentUser.id) {
       // Show event details for teacher (view only)
       const eventDetails = (
         <div className="p-3">
@@ -285,7 +287,7 @@ export default function Scheduler() {
               <span>{event.subject}</span>
             </div>
           </div>
-          {canTakeAttendance && (
+          {/*{canTakeAttendance && (
             <button
               onClick={() => {
                 toast.dismiss();
@@ -296,7 +298,7 @@ export default function Scheduler() {
             >
               Take Attendance
             </button>
-          )}
+          )}*/}
         </div>
       );
 
@@ -484,7 +486,6 @@ export default function Scheduler() {
           start_time: currentEvent.startTime,
           end_time: currentEvent.endTime
         });
-
         const newEvent = response.data;
         const classInfo = classes.find(c => c.id === currentEvent.classId);
         const teacher = teachers.find(t => t.id === classTeacherMap[currentEvent.classId]);

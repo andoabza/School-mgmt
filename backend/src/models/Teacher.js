@@ -3,22 +3,26 @@ import { pool } from "../config/db.js";
 class Teacher {
 
   static async getAll() {
-    const { rows } = await pool.query(
-      `SELECT 
-        u.first_name,
-        u.last_name,
-        t.id, 
-        t.subject, 
-        c.id AS class_id,
-        c.name AS class_name,
-        c.subject,
-        c.teacher_id
-      FROM teachers t
-      JOIN classes c ON t.id = c.teacher_id
-      JOIN users u ON t.id = u.id`
-    );
-    return rows;
-  }
+  const { rows } = await pool.query(`
+    SELECT 
+      u.id,
+      u.first_name,
+      u.last_name,
+      json_agg(json_build_object(
+        'id', c.id,
+        'subject', ct.subject,
+        'name', c.name,
+        'grade_level', c.grade_level
+      )) AS classes
+    FROM users u
+    JOIN class_teachers ct ON u.id = ct.teacher_id
+    JOIN classes c ON ct.class_id = c.id
+    WHERE u.role = 'teacher'
+    GROUP BY u.id, u.first_name, u.last_name
+  `);
+  
+  return rows;
+}
 
   static async getByClassId(classId) {
   const { rows } = await pool.query(
@@ -42,12 +46,16 @@ class Teacher {
 
   static async getClassesByTeacher(teacherId) {
     const { rows } = await pool.query(
-      `SELECT c.id, c.name, c.subject, c.grade_level, 
-              COUNT(e.id) AS student_count
-       FROM classes c
-       LEFT JOIN enrollment e ON c.id = e.class_id
-       WHERE c.teacher_id = $1
-       GROUP BY c.id`,
+      // `SELECT ct.id, c.name, ct.subject, c.grade_level, 
+      //         COUNT(e.id) AS student_count
+      //  FROM class_teachers ct
+      //  LEFT JOIN enrollment e ON ct.class_id = e.class_id
+      //   JOIN classes c ON ct.class_id = c.id
+      //  WHERE ct.teacher_id = $1
+      `SELECT ct.class_id AS id, ct.teacher_id, ct.subject, c.name, c.grade_level
+       FROM class_teachers ct
+       JOIN classes c ON ct.class_id = c.id
+       WHERE ct.teacher_id = $1`,
       [teacherId]
     );
     return rows;

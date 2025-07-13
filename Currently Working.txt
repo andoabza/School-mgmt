@@ -1,0 +1,4 @@
+we are trying to get all the teachers for the student pop up modal but the /teacher endpoint is returning only 3 teachers we need to fix that. i have added the teacher name n the schedules response you need to implement it in to the pop up teacher name.
+
+Sun jul 6 11:47:20
+fixted the upper issue then woring on the add attendance for the teacher but i think we should remove the add attendance from the pop up.

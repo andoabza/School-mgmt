@@ -50,27 +50,22 @@ export const AuthProvider = ({ children }) => {
     setError(null);
     try {
       const data = await loginUser(formData);
+      
+      if (data?.token) {
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        setUser(data.user);
 
-      if (!data?.token) {
-        throw new Error('Authentication failed: No token received');
+        // Redirect to dashboard or intended path
+        const redirectPath = location.state?.from?.pathname || '/dashboard';
+        navigate(redirectPath);
+      } else{
+      setError('email or password incorrect!');
+      console.log(data);
+      return;
       }
-
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
-      axios.defaults.headers.common['Authorization'] = `Bearer ${data.token}`;
-      setUser(data.user);
-
-      // Redirect to dashboard or intended path
-      const redirectPath = location.state?.from?.pathname || '/dashboard';
-      navigate(redirectPath);
-
-      return true;
     } catch (error) {
-      const errorMessage = error.response?.data?.message ||
-                         error.message ||
-                         'Login failed. Please try again.';
-      setError(errorMessage);
-      return false;
+      setError('Login failed. Please try again.');
     }
   };
 

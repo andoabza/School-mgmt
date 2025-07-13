@@ -60,7 +60,7 @@ class Attendance {
 
   static async getAttendanceHistory(classId, start, end) {
     const { rows } = await pool.query(
-      `SELECT a.date, a.remark, 
+      `SELECT a.class_id, a.attendance_date, a.remark, 
               COUNT(ar.id) FILTER (WHERE ar.status = 'present') AS present_count,
               COUNT(ar.id) FILTER (WHERE ar.status = 'absent') AS absent_count,
               COUNT(ar.id) FILTER (WHERE ar.status = 'late') AS late_count,
@@ -69,11 +69,23 @@ class Attendance {
        LEFT JOIN attendance_records ar ON a.id = ar.attendance_id
        WHERE a.class_id = $1 AND a.attendance_date BETWEEN $2 AND $3
        GROUP BY a.id
-       ORDER BY a.date DESC`,
+       ORDER BY a.attendance_date DESC`,
       [classId, start, end]
     );
     return rows;
   }
-}
 
+static async getStudentHistory(studentId, start, end) {
+    const { rows } = await pool.query(
+      `SELECT a.id, ar.*
+       FROM attendance_records ar
+       LEFT JOIN attendance a ON ar.attendance_id = a.id
+       WHERE ar.student_id = $1 AND a.attendance_date BETWEEN $2 AND $3
+       GROUP BY a.attendance_date, a.id, ar.id
+       ORDER BY a.attendance_date DESC`,
+      [studentId, start, end]
+    );
+    return rows;
+  }
+}
 export default Attendance;

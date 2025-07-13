@@ -1,9 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import moment from 'moment';
 import api from '../axiosConfig';
 import { toast } from 'react-toastify';
 import { useUser } from '../context/userContext';
-import { FiEdit, FiSave, FiClock, FiAlertCircle, FiCheckCircle, FiXCircle, FiUser, FiCalendar, FiFilter, FiChevronDown, FiChevronUp } from 'react-icons/fi';
+import { 
+  FiEdit, FiSave, FiClock, FiAlertCircle, FiCheckCircle, 
+  FiXCircle, FiUser, FiCalendar, FiFilter, FiChevronDown, 
+  FiChevronUp, FiSearch, FiBarChart2, FiGrid, FiList, FiPrinter 
+} from 'react-icons/fi';
+import { CSVLink } from 'react-csv';
 
 const AttendanceTracker = () => {
   const { user } = useUser();
@@ -18,20 +23,177 @@ const AttendanceTracker = () => {
   const [selectedClass, setSelectedClass] = useState(null);
   const [existingAttendance, setExistingAttendance] = useState(null);
   const [dateRange, setDateRange] = useState({
-    start: moment().startOf('week').format('YYYY-MM-DD'),
-    end: moment().endOf('week').format('YYYY-MM-DD')
+    start: moment().subtract(7, 'days').format('YYYY-MM-DD'),
+    end: moment().format('YYYY-MM-DD')
   });
-  const [viewMode, setViewMode] = useState('daily'); // 'daily' or 'range'
+  const [viewMode, setViewMode] = useState('daily');
   const [expandedStudent, setExpandedStudent] = useState(null);
+  const [expanded, setExpanded] = useState(false);
   const [studentAttendanceHistory, setStudentAttendanceHistory] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [displayMode, setDisplayMode] = useState('table');
+  const [selectedMonth, setSelectedMonth] = useState(moment().format('YYYY-MM'));
+  const [monthAttendance, setMonthAttendance] = useState([]);
+  const [exportData, setExportData] = useState([]);
+  const [children, setChildren] = useState([]);
+  const [selectedChild, setSelectedChild] = useState(null);
+  const [ws, setWs] = useState(null);
+  const [realtimeUpdates, setRealtimeUpdates] = useState([]);
 
-  // Status options with icons and colors
+  // Status options
   const statusOptions = [
     { value: 'present', label: 'Present', color: '#10B981', icon: <FiCheckCircle /> },
     { value: 'absent', label: 'Absent', color: '#EF4444', icon: <FiXCircle /> },
     { value: 'late', label: 'Late', color: '#F59E0B', icon: <FiClock /> },
     { value: 'excused', label: 'Excused', color: '#3B82F6', icon: <FiAlertCircle /> },
   ];
+
+  // Initialize WebSocket for real-time updates
+  useEffect(() => {
+    if (!user) return;
+    
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws?token=${localStorage.getItem('token')}`;
+    const socket = new WebSocket(wsUrl);
+
+    socket.onopen = () => {
+      console.log('WebSocket connected');
+      socket.send(JSON.stringify({ 
+        type: 'subscribe', 
+        userId: user.id,
+        role: user.role 
+      }));
+    };
+    
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === 'attendanceUpdate') {
+        setRealtimeUpdates(prev => [...prev, data]);
+        toast.info(`Attendance updated: ${data.studentName} marked as ${data.status}`);
+      }
+    };
+    
+    socket.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+    
+    socket.onclose = () => {
+      console.log('WebSocket disconnected');
+    };
+    
+    setWs(socket);
+    
+    return () => {
+      if (socket.readyState === 1) {
+        socket.close();
+      }
+    };
+  }, [user]);
+
+  // Apply real-time updates
+  useEffect(() => {
+    if (realtimeUpdates.length > 0) {
+      const lastUpdate = realtimeUpdates[realtimeUpdates.length - 1];
+      
+      if (lastUpdate.classId === selectedClass && 
+          lastUpdate.date === selectedDate) {
+        setAttendance(prev => ({
+          ...prev,
+          [lastUpdate.studentId]: {
+            status: lastUpdate.status,
+            details: lastUpdate.details || ''
+          }
+        }));
+        
+        // Refetch data to ensure consistency
+        fetchAttendanceData();
+      }
+    }
+  }, [realtimeUpdates, selectedClass, selectedDate]);
+
+  // Find attendance record for a student on a specific date
+  const findAttendanceRecord = useCallback((studentId, date) => {
+    if (!studentAttendanceHistory.length) return null;
+    
+    // First check existing attendance for the day
+    if (existingAttendance && existingAttendance.records) {
+      const record = existingAttendance.records.find(
+        r => r.student_id === studentId && r.date === date
+      );
+      if (record) return record;
+    }
+    
+    // Then check student-specific history
+    return studentAttendanceHistory.find(
+      item => item.student_id === studentId && item.date === date
+    );
+  }, [studentAttendanceHistory, existingAttendance]);
+
+  // Filter students
+  const filteredStudents = useMemo(() => {
+    if (students.length > 1) {
+    return students.filter(student => {
+      const matchesSearch = 
+        `${student.first_name} ${student.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        student.student_id?.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      const studentStatus = attendance[student.id]?.status;
+      const matchesStatus = statusFilter === 'all' || studentStatus === statusFilter;
+      
+      return matchesSearch && matchesStatus;
+    });
+  }
+  return attendance?.status;
+  }, [students, searchTerm, statusFilter, attendance]);
+
+  // Calculate attendance statistics
+  const attendanceStats = useMemo(() => {
+    const stats = {
+      total: students.length,
+      present: 0,
+      absent: 0,
+      late: 0,
+      excused: 0,
+      presentPercentage: 0
+    };
+
+    students.forEach(student => {
+      const status = attendance[student.id]?.status;
+      if (stats[status] !== undefined) stats[status]++;
+    });
+
+    if (stats.total > 0) {
+      stats.presentPercentage = Math.round((stats.present / stats.total) * 100);
+    }
+
+    return stats;
+  }, [students, attendance]);
+
+  // Prepare data for export
+  const prepareExportData = useCallback(() => {
+    const data = [];
+    
+    // Add headers
+    data.push(['Student ID', 'Name', 'Status', 'Details', 'Date', 'Class']);
+    
+    // Add student records
+    students.forEach(student => {
+      const status = attendance[student.id]?.status || 'present';
+      const details = attendance[student.id]?.details || '';
+      
+      data.push([
+        student.student_id || '',
+        `${student.first_name} ${student.last_name}`,
+        status.charAt(0).toUpperCase() + status.slice(1),
+        details,
+        selectedDate,
+        classes.find(c => c.id === selectedClass)?.name || ''
+      ]);
+    });
+    
+    return data;
+  }, [students, attendance, selectedDate, classes, selectedClass]);
 
   // Fetch classes based on user role
   useEffect(() => {
@@ -41,21 +203,29 @@ const AttendanceTracker = () => {
         let endpoint = '/classes';
         
         if (user?.role === 'teacher') {
-          endpoint = `/classes?teacherId=${user.id}`;
+          endpoint = `/teacher/${user.id}/classes`;
         } else if (user?.role === 'student') {
           endpoint = `/enrollments/student/${user.id}/classes`;
         } else if (user?.role === 'parent') {
-          // For parents, we need to get their children first
           const childrenRes = await api.get(`/parents/${user.id}/children`);
+          setChildren(childrenRes.data);
+          
           if (childrenRes.data.length > 0) {
-            endpoint = `/enrollments/student/${childrenRes.data[0].id}/classes`;
+            setSelectedChild(childrenRes.data[0].id);
+            const classesRes = await api.get(`/enrollments/student/${childrenRes.data[0].id}/classes`);
+            setClasses(classesRes.data);
+            
+            if (classesRes.data.length > 0) {
+              setSelectedClass(classesRes.data[0].id);
+            }
           }
+          setLoading(false);
+          return;
         }
         
         const res = await api.get(endpoint);
         setClasses(res.data);
         
-        // Auto-select the first class for non-admins
         if (res.data.length > 0 && user?.role !== 'admin') {
           setSelectedClass(res.data[0].id);
         }
@@ -69,17 +239,26 @@ const AttendanceTracker = () => {
     fetchClasses();
   }, [user]);
 
-  // Fetch students and attendance data when class or date changes
+  // Fetch students and attendance data
   useEffect(() => {
     if (selectedClass) {
       if (viewMode === 'daily') {
         fetchClassStudents();
         fetchAttendanceData();
-      } else {
+      } else if (viewMode === 'range') {
         fetchAttendanceHistory();
+      } else {
+        fetchMonthAttendance();
       }
     }
-  }, [selectedClass, selectedDate, dateRange, viewMode]);
+  }, [selectedClass, selectedDate, dateRange, viewMode, selectedChild]);
+
+  // Prepare export data
+  useEffect(() => {
+    if (students.length > 0 && selectedClass) {
+      setExportData(prepareExportData());
+    }
+  }, [students, attendance, selectedClass, selectedDate, prepareExportData]);
 
   // Fetch students for the selected class
   const fetchClassStudents = async () => {
@@ -88,27 +267,24 @@ const AttendanceTracker = () => {
       let endpoint = `/enrollments/class/${selectedClass}/students`;
       
       if (user?.role === 'student') {
-        // Students only see their own attendance
-        const res = await api.get(`/users/${user.id}`);
-        setStudents([res.data]);
+        const res = await api.get(`/users/me`);
+        setStudents(res.data);
         
-        // Also fetch their attendance history for the sidebar
         const historyRes = await api.get(`/attendance/student/${user.id}?start=${dateRange.start}&end=${dateRange.end}`);
         setStudentAttendanceHistory(historyRes.data);
         return;
       } else if (user?.role === 'parent') {
-        // Parents see their children's attendance
-        const childrenRes = await api.get(`/parents/${user.id}/children`);
-        if (childrenRes.data.length > 0) {
-          const studentIds = childrenRes.data.map(child => child.id).join(',');
-          endpoint += `?studentIds=${studentIds}`;
+        if (selectedChild) {
+          setStudents([children.find(child => child.id === selectedChild)]);
+        } else {
+          setStudents([]);
         }
+        setLoading(false);
+        return;
       }
       
       const res = await api.get(endpoint);
       setStudents(res.data);
-      
-      // Initialize attendance statuses
       const initialAttendance = {};
       res.data.forEach(student => {
         initialAttendance[student.id] = {
@@ -124,7 +300,7 @@ const AttendanceTracker = () => {
     }
   };
 
-  // Fetch attendance data for a specific date
+  // Fetch attendance data
   const fetchAttendanceData = async () => {
     if (!selectedClass || !selectedDate) return;
     
@@ -133,19 +309,16 @@ const AttendanceTracker = () => {
       
       if (user?.role === 'student') {
         endpoint += `&studentId=${user.id}`;
-      } else if (user?.role === 'parent') {
-        const childrenRes = await api.get(`/parents/${user.id}/children`);
-        if (childrenRes.data.length > 0) {
-          endpoint += `&studentId=${childrenRes.data[0].id}`;
-        }
+      } else if (user?.role === 'parent' && selectedChild) {
+        endpoint += `&studentId=${selectedChild}`;
       }
       
       const res = await api.get(endpoint);
       if (res.data) {
+        console.log(re.data);
         setExistingAttendance(res.data);
         setRemark(res.data.remark || "");
         
-        // Pre-fill attendance statuses
         const filledAttendance = {};
         res.data.records.forEach(record => {
           filledAttendance[record.student_id] = {
@@ -154,13 +327,32 @@ const AttendanceTracker = () => {
           };
         });
         setAttendance(filledAttendance);
+      } else {
+        setExistingAttendance(null);
+        setRemark("");
+        
+        // Initialize attendance if none exists
+        const initialAttendance = {};
+        students.forEach(student => {
+          initialAttendance[student.id] = {
+            status: 'present',
+            details: ''
+          };
+        });
+        setAttendance(initialAttendance);
+        
+        // Show warning for new date
+        if (students.length > 0 && user?.role !== 'student' && user?.role !== 'parent') {
+          toast.warn(`No attendance recorded for ${moment(selectedDate).format('MMM D, YYYY')}. Please add records.`);
+        }
       }
     } catch (error) {
       console.error('Error fetching attendance:', error);
+      toast.error('Failed to load attendance data');
     }
   };
 
-  // Fetch attendance history for a date range
+  // Fetch attendance history
   const fetchAttendanceHistory = async () => {
     if (!selectedClass) return;
     
@@ -169,21 +361,46 @@ const AttendanceTracker = () => {
       
       if (user?.role === 'student') {
         endpoint += `&studentId=${user.id}`;
-      } else if (user?.role === 'parent') {
-        const childrenRes = await api.get(`/parents/${user.id}/children`);
-        if (childrenRes.data.length > 0) {
-          endpoint += `&studentId=${childrenRes.data[0].id}`;
-        }
+      } else if (user?.role === 'parent' && selectedChild) {
+        endpoint += `&studentId=${selectedChild}`;
       }
       
       const res = await api.get(endpoint);
+      if (!res.data || res.data.length === 0) {
+        toast.warn('No attendance recorded for selected date range');
+      }
       setExistingAttendance(res.data);
     } catch (error) {
       console.error('Error fetching attendance history:', error);
+      toast.error('Failed to load attendance history');
     }
   };
 
-  // Handle status change for a student
+  // Fetch month attendance
+  const fetchMonthAttendance = async () => {
+    if (!selectedClass) return;
+    
+    try {
+      const startOfMonth = moment(selectedMonth).startOf('month').format('YYYY-MM-DD');
+      const endOfMonth = moment(selectedMonth).endOf('month').format('YYYY-MM-DD');
+      
+      let endpoint = `/attendance/history?classId=${selectedClass}&start=${startOfMonth}&end=${endOfMonth}`;
+      
+      if (user?.role === 'student') {
+        endpoint += `&studentId=${user.id}`;
+      } else if (user?.role === 'parent' && selectedChild) {
+        endpoint += `&studentId=${selectedChild}`;
+      }
+      
+      const res = await api.get(endpoint);
+      setMonthAttendance(res.data);
+    } catch (error) {
+      console.error('Error fetching month attendance:', error);
+      toast.error('Failed to load monthly attendance');
+    }
+  };
+
+  // Handle status change
   const handleStatusChange = (studentId, status) => {
     if (user?.role === 'student' || user?.role === 'parent') return;
     
@@ -202,7 +419,7 @@ const AttendanceTracker = () => {
     }
   };
 
-  // Save late arrival details
+  // Save late details
   const saveLateDetails = (minutes) => {
     const { studentId } = lateModal;
     setAttendance(prev => ({
@@ -213,9 +430,23 @@ const AttendanceTracker = () => {
       }
     }));
     setLateModal({ visible: false, studentId: null });
+    
+    // Send real-time update
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      const student = students.find(s => s.id === studentId);
+      ws.send(JSON.stringify({
+        type: 'attendanceUpdate',
+        classId: selectedClass,
+        date: selectedDate,
+        studentId,
+        studentName: `${student.first_name} ${student.last_name}`,
+        status: 'late',
+        details: `${minutes} minutes late`
+      }));
+    }
   };
 
-  // Save excused absence reason
+  // Save excused reason
   const saveExcusedReason = (reason) => {
     const { studentId } = excusedModal;
     setAttendance(prev => ({
@@ -226,9 +457,23 @@ const AttendanceTracker = () => {
       }
     }));
     setExcusedModal({ visible: false, studentId: null });
+    
+    // Send real-time update
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      const student = students.find(s => s.id === studentId);
+      ws.send(JSON.stringify({
+        type: 'attendanceUpdate',
+        classId: selectedClass,
+        date: selectedDate,
+        studentId,
+        studentName: `${student.first_name} ${student.last_name}`,
+        status: 'excused',
+        details: reason
+      }));
+    }
   };
 
-  // Submit attendance data
+  // Submit attendance
   const submitAttendance = async () => {
     if (!selectedClass) {
       toast.error('Please select a class first');
@@ -239,10 +484,10 @@ const AttendanceTracker = () => {
     try {
       const records = students.map(student => ({
         studentId: student.id,
-        status: attendance[student.id]?.status || 'present',
+        status: attendance[student.id]?.status,
         details: attendance[student.id]?.details || '',
       }));
-
+      
       const payload = {
         classId: selectedClass,
         date: selectedDate,
@@ -260,6 +505,9 @@ const AttendanceTracker = () => {
       toast.success('Attendance saved successfully!');
       setRemark("");
       setExistingAttendance({ ...payload, id: existingAttendance?.id });
+      
+      // Fetch updated data
+      fetchAttendanceData();
     } catch (error) {
       console.error('Error submitting attendance:', error);
       toast.error('Failed to save attendance');
@@ -268,7 +516,7 @@ const AttendanceTracker = () => {
     }
   };
 
-  // Mark all students with a specific status
+  // Mark all students with a status
   const markAll = (status) => {
     if (user?.role === 'student' || user?.role === 'parent') return;
     
@@ -283,26 +531,25 @@ const AttendanceTracker = () => {
     setAttendance(newAttendance);
   };
 
-  // Get status counts for summary
-  const getStatusCounts = () => {
-    const counts = { present: 0, absent: 0, late: 0, excused: 0 };
-    students.forEach(student => {
-      const status = attendance[student.id]?.status || 'present';
-      if (counts[status] !== undefined) counts[status]++;
-    });
-    return counts;
-  };
-
-  const statusCounts = getStatusCounts();
-
-  // Toggle student details expansion
-  const toggleStudentExpansion = (studentId) => {
-    setExpandedStudent(expandedStudent === studentId ? null : studentId);
-  };
-
-  // Render different views based on user role
+  // Render admin/teacher view
   const renderAdminTeacherView = () => (
     <>
+      {!existingAttendance && viewMode === 'daily' && (
+        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <FiAlertCircle className="h-5 w-5 text-yellow-400" />
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-yellow-700">
+                <strong>No attendance recorded for {moment(selectedDate).format('MMM D, YYYY')}.</strong> 
+                {' '}Please mark attendance and save.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+      
       <div className="flex flex-col sm:flex-row justify-between gap-3 mb-6">
         <div className="flex flex-wrap gap-2">
           <select
@@ -328,306 +575,596 @@ const AttendanceTracker = () => {
           />
         </div>
         
-        <button 
-          onClick={submitAttendance}
-          disabled={loading}
-          className={`px-4 py-2 rounded-md flex items-center gap-1 min-w-[180px] justify-center ${
-            loading 
-              ? 'bg-gray-400 cursor-not-allowed' 
-              : 'bg-green-600 hover:bg-green-700 text-white'
-          }`}
-        >
-          {loading ? (
-            <>
-              <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              Saving...
-            </>
-          ) : (
-            <>
-              <FiSave className="h-5 w-5" />
-              {existingAttendance ? 'Update' : 'Save'} Attendance
-            </>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setDisplayMode(displayMode === 'table' ? 'card' : 'table')}
+            className="p-2 border border-gray-300 rounded-md bg-white flex items-center"
+          >
+            {displayMode === 'table' ? <FiGrid className="mr-1" /> : <FiList className="mr-1" />}
+            {displayMode === 'table' ? 'Card View' : 'Table View'}
+          </button>
+          
+          {exportData.length > 0 && (
+            <CSVLink 
+              data={exportData} 
+              filename={`attendance-${selectedDate}-${classes.find(c => c.id === selectedClass)?.name || 'class'}.csv`}
+              className="px-3 py-2 bg-blue-600 text-white rounded-md flex items-center"
+            >
+              <FiPrinter className="mr-1" /> Export CSV
+            </CSVLink>
           )}
-        </button>
-      </div>
-      
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Student
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Details
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {students.map((student) => {
-              const status = attendance[student.id]?.status || 'present';
-              const details = attendance[student.id]?.details || '';
-              const statusInfo = statusOptions.find(opt => opt.value === status);
-              
-              return (
-                <React.Fragment key={student.id}>
-                  <tr className="hover:bg-gray-50 cursor-pointer" onClick={() => toggleStudentExpansion(student.id)}>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="bg-gray-200 border-2 border-dashed rounded-xl w-10 h-10" />
-                        <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">
-                            {student.first_name} {student.last_name}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            ID: {student.student_id} | Grade: {student.grade_level}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        <div 
-                          className="h-8 w-8 rounded-full flex items-center justify-center"
-                          style={{ backgroundColor: `${statusInfo?.color}20`, border: `1px solid ${statusInfo?.color}` }}
-                        >
-                          {statusInfo.icon}
-                        </div>
-                        <select
-                          value={status}
-                          onChange={(e) => handleStatusChange(student.id, e.target.value)}
-                          className="p-1 border border-gray-300 rounded-md bg-white"
-                          disabled={loading}
-                        >
-                          {statusOptions.map(option => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {details || '-'}
-                    </td>
-                  </tr>
-                  {expandedStudent === student.id && (
-                    <tr>
-                      <td colSpan="3" className="px-6 py-4 bg-gray-50">
-                        <div className="text-sm text-gray-700">
-                          <h4 className="font-medium mb-2">Attendance History (Last 7 Days)</h4>
-                          <div className="grid grid-cols-1 sm:grid-cols-7 gap-2">
-                            {Array.from({ length: 7 }).map((_, i) => {
-                              const date = moment().subtract(i, 'days').format('YYYY-MM-DD');
-                              const historyItem = studentAttendanceHistory.find(item => item.date === date);
-                              const status = historyItem?.status || 'not recorded';
-                              
-                              return (
-                                <div key={date} className="text-center">
-                                  <div className="text-xs text-gray-500">{moment(date).format('ddd')}</div>
-                                  <div className="text-xs">{moment(date).format('MMM D')}</div>
-                                  <div className={`mt-1 p-1 rounded-full text-xs ${
-                                    status === 'present' ? 'bg-green-100 text-green-800' :
-                                    status === 'absent' ? 'bg-red-100 text-red-800' :
-                                    status === 'late' ? 'bg-yellow-100 text-yellow-800' :
-                                    status === 'excused' ? 'bg-blue-100 text-blue-800' :
-                                    'bg-gray-100 text-gray-800'
-                                  }`}>
-                                    {status}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </>
-  );
-
-  const renderStudentView = () => (
-    <div className="bg-white rounded-lg shadow-sm p-6">
-      <div className="flex items-center mb-6">
-        <div className="bg-gray-200 border-2 border-dashed rounded-xl w-16 h-16 mr-4" />
-        <div>
-          <h3 className="text-xl font-medium text-gray-900">
-            {students[0]?.first_name} {students[0]?.last_name}
-          </h3>
-          <p className="text-gray-600">Student Id: {students[0]?.student_id} | Grade: {students[0]?.grade_level}</p>
+          
+          <button 
+            onClick={submitAttendance}
+            disabled={loading}
+            className={`px-4 py-2 rounded-md flex items-center gap-1 min-w-[180px] justify-center ${
+              loading 
+                ? 'bg-gray-400 cursor-not-allowed' 
+                : 'bg-green-600 hover:bg-green-700 text-white'
+            }`}
+          >
+            {loading ? (
+              <>
+                <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Saving...
+              </>
+            ) : (
+              <>
+                <FiSave className="h-5 w-5" />
+                {existingAttendance ? 'Update' : 'Save'} Attendance
+              </>
+            )}
+          </button>
         </div>
       </div>
       
-      <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-        <h4 className="font-medium text-blue-800 mb-2">Today's Attendance</h4>
-        {existingAttendance ? (
-          <div className="flex items-center">
-            <div 
-              className="h-10 w-10 rounded-full flex items-center justify-center mr-3"
-              style={{ 
-                backgroundColor: `${statusOptions.find(opt => opt.value === existingAttendance.records[0]?.status)?.color}20`,
-                border: `1px solid ${statusOptions.find(opt => opt.value === existingAttendance.records[0]?.status)?.color}`
-              }}
-            >
-              {statusOptions.find(opt => opt.value === existingAttendance.records[0]?.status)?.icon}
-            </div>
-            <div>
-              <p className="font-medium">
-                {statusOptions.find(opt => opt.value === existingAttendance.records[0]?.status)?.label}
-              </p>
-              <p className="text-sm text-gray-600">
-                {existingAttendance.records[0]?.details || 'No details provided'}
-              </p>
-            </div>
-          </div>
-        ) : (
-          <p className="text-gray-600">Attendance not recorded yet</p>
-        )}
+      {/* Filters */}
+      <div className="flex flex-col md:flex-row gap-4 mb-6">
+        <div className="relative flex-1">
+          <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search students..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-600">Filter:</span>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="p-2 border border-gray-300 rounded-md bg-white"
+          >
+            <option value="all">All Statuses</option>
+            {statusOptions.map(option => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
       
-      <h4 className="font-medium text-gray-900 mb-3">Weekly Summary</h4>
-      <div className="grid grid-cols-1 sm:grid-cols-7 gap-2 mb-6">
-        {Array.from({ length: 7 }).map((_, i) => {
-          const date = moment().subtract(i, 'days').format('YYYY-MM-DD');
-          const historyItem = studentAttendanceHistory.find(item => item.date === date);
-          const status = historyItem?.status || 'not recorded';
-          
-          return (
-            <div key={date} className={`p-2 rounded-lg text-center ${
-              date === selectedDate ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'
-            }`}>
-              <div className="text-xs text-gray-500">{moment(date).format('ddd')}</div>
-              <div className="text-xs mb-1">{moment(date).format('MMM D')}</div>
-              <div className={`text-xs p-1 rounded-full ${
-                status === 'present' ? 'bg-green-100 text-green-800' :
-                status === 'absent' ? 'bg-red-100 text-red-800' :
-                status === 'late' ? 'bg-yellow-100 text-yellow-800' :
-                status === 'excused' ? 'bg-blue-100 text-blue-800' :
-                'bg-gray-100 text-gray-800'
-              }`}>
-                {status}
+      {/* Attendance Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+        <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+          <div className="text-2xl font-bold text-gray-900">{attendanceStats.total}</div>
+          <div className="text-sm text-gray-600">Total Students</div>
+        </div>
+        
+        {statusOptions.map(status => (
+          <div key={status.value} className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+            <div className="flex items-center">
+              <div 
+                className="h-8 w-8 rounded-full flex items-center justify-center mr-2"
+                style={{ backgroundColor: `${status.color}20`, border: `1px solid ${status.color}` }}
+              >
+                {status.icon}
+              </div>
+              <div>
+                <div className="text-xl font-bold" style={{ color: status.color }}>
+                  {attendanceStats[status.value]}
+                </div>
+                <div className="text-sm text-gray-600">{status.label}</div>
               </div>
             </div>
-          );
-        })}
-      </div>
-      
-      <h4 className="font-medium text-gray-900 mb-3">Attendance Statistics</h4>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {statusOptions.map(status => (
-          <div key={status.value} className="bg-white p-3 rounded-lg border border-gray-200">
-            <div className="text-2xl font-bold" style={{ color: status.color }}>
-              {studentAttendanceHistory.filter(item => item.status === status.value).length}
-            </div>
-            <div className="text-sm text-gray-600">{status.label}</div>
           </div>
         ))}
       </div>
-    </div>
-  );
-
-  const renderParentView = () => (
-    <div className="bg-white rounded-lg shadow-sm p-6">
-      <div className="mb-6">
-        <h3 className="text-xl font-medium text-gray-900 mb-4">My Children's Attendance</h3>
-        <div className="space-y-4">
-          {students.map(student => (
-            <div key={student.id} className="border border-gray-200 rounded-lg p-4">
-              <div className="flex items-center mb-3">
-                <div className="bg-gray-200 border-2 border-dashed rounded-xl w-12 h-12 mr-3" />
-                <div>
-                  <h4 className="font-medium">{student.first_name} {student.last_name}</h4>
-                  <p className="text-sm text-gray-600">Grade {student.grade_level}</p>
-                </div>
-              </div>
-              
-              <div className="mb-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                <h5 className="font-medium text-blue-800 mb-1">Today's Status</h5>
-                {attendance[student.id] ? (
+      
+      {/* Table View */}
+      {displayMode === 'table' ? (
+        <div className="overflow-x-auto rounded-lg border border-gray-200">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Student
+                </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  ID
+                </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Details
+                </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  History
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {filteredStudents.map((student) => {
+                const status = attendance[student.id]?.status || 'present';
+                const details = attendance[student.id]?.details || '';
+                const statusInfo = statusOptions.find(opt => opt.value === status);
+                
+                return (
+                  <React.Fragment key={student.id}>
+                    <tr className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <div className="bg-gray-200 border-2 border-dashed rounded-xl w-10 h-10" />
+                          <div className="ml-4">
+                            <div className="text-sm font-medium text-gray-900">
+                              {student.first_name} {student.last_name}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              Grade: {student.grade_level} | Class: {student.class_name}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {student.student_id || 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <div 
+                            className="h-8 w-8 rounded-full flex items-center justify-center"
+                            style={{ backgroundColor: `${statusInfo?.color}20`, border: `1px solid ${statusInfo?.color}` }}
+                          >
+                            {statusInfo.icon}
+                          </div>
+                          <select
+                            value={status}
+                            onChange={(e) => handleStatusChange(student.id, e.target.value)}
+                            className="p-1 border border-gray-300 rounded-md bg-white"
+                            disabled={loading}
+                          >
+                            {statusOptions.map(option => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {details || '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-500">
+                        <button 
+                          onClick={() => setExpandedStudent(expandedStudent === student.id ? null : student.id)}
+                          className="flex items-center"
+                        >
+                          {expandedStudent === student.id ? (
+                            <>
+                              <FiChevronUp className="mr-1" /> Hide
+                            </>
+                          ) : (
+                            <>
+                              <FiChevronDown className="mr-1" /> View
+                            </>
+                          )}
+                        </button>
+                      </td>
+                    </tr>
+                    {expandedStudent === student.id && (
+                      <tr>
+                        <td colSpan="5" className="px-6 py-4 bg-gray-50">
+                          <div className="text-sm text-gray-700">
+                            <h4 className="font-medium mb-2">Attendance History (Last 7 Days)</h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-7 gap-2">
+                              {Array.from({ length: 7 }).map((_, i) => {
+                                const date = moment().subtract(i, 'days').format('YYYY-MM-DD');
+                                const historyItem = findAttendanceRecord(student.id, date);
+                                const status = historyItem?.status || 'not recorded';
+                                const statusInfo = statusOptions.find(opt => opt.value === status) || 
+                                                 { color: '#9CA3AF', icon: <FiCalendar /> };
+                                
+                                return (
+                                  <div key={date} className="text-center p-2 bg-white rounded-lg border border-gray-200">
+                                    <div className="text-xs text-gray-500">{moment(date).format('ddd')}</div>
+                                    <div className="text-xs mb-1">{moment(date).format('MMM D')}</div>
+                                    <div 
+                                      className="mx-auto h-8 w-8 rounded-full flex items-center justify-center"
+                                      style={{ 
+                                        backgroundColor: `${statusInfo.color}20`, 
+                                        border: `1px solid ${statusInfo.color}` 
+                                      }}
+                                    >
+                                      {statusInfo.icon}
+                                    </div>
+                                    <div className="text-xs mt-1 capitalize">
+                                      {status}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        // Card View
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredStudents.map((student) => {
+            const status = attendance[student.id]?.status;
+            const details = attendance[student.id]?.details;
+            const statusInfo = statusOptions.find(opt => opt.value === status);
+            
+            return (
+              <div key={student.id} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                <div className="p-4">
                   <div className="flex items-center">
-                    <div 
-                      className="h-8 w-8 rounded-full flex items-center justify-center mr-2"
-                      style={{ 
-                        backgroundColor: `${statusOptions.find(opt => opt.value === attendance[student.id]?.status)?.color}20`,
-                        border: `1px solid ${statusOptions.find(opt => opt.value === attendance[student.id]?.status)?.color}`
-                      }}
-                    >
-                      {statusOptions.find(opt => opt.value === attendance[student.id]?.status)?.icon}
-                    </div>
+                    <div className="bg-gray-200 border-2 border-dashed rounded-xl w-12 h-12 mr-3" />
                     <div>
-                      <p className="text-sm">
-                        {statusOptions.find(opt => opt.value === attendance[student.id]?.status)?.label}
-                      </p>
-                      <p className="text-xs text-gray-600">
-                        {attendance[student.id]?.details || 'No details provided'}
+                      <h3 className="font-medium text-gray-900">
+                        {student.first_name} {student.last_name}
+                      </h3>
+                      <p className="text-sm text-gray-500">
+                        ID: {student.student_id || 'N/A'} | Grade {student.grade_level}
                       </p>
                     </div>
                   </div>
-                ) : (
-                  <p className="text-sm text-gray-600">Not recorded yet</p>
-                )}
+                  
+                  <div className="mt-4 flex items-center justify-between">
+                    <div className="flex items-center">
+                      <div 
+                        className="h-10 w-10 rounded-full flex items-center justify-center mr-2"
+                        style={{ 
+                          backgroundColor: `${statusInfo?.color}20`, 
+                          border: `1px solid ${statusInfo?.color}` 
+                        }}
+                      >
+                        {statusInfo?.icon}
+                      </div>
+                      <div>
+                        <div className="font-medium">{statusInfo?.label}</div>
+                        <div className="text-sm text-gray-600">{details || 'No details'}</div>
+                      </div>
+                    </div>
+                    
+                    <select
+                      value={status}
+                      onChange={(e) => handleStatusChange(student.id, e.target.value)}
+                      className="p-1 border border-gray-300 rounded-md bg-white"
+                      disabled={loading}
+                    >
+                      {statusOptions.map(option => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  <button 
+                    onClick={() => setExpandedStudent(expandedStudent === student.id ? null : student.id)}
+                    className="w-full mt-4 text-sm text-blue-600 hover:text-blue-800 flex items-center justify-center"
+                  >
+                    {expandedStudent === student.id ? (
+                      <>
+                        <FiChevronUp className="mr-1" /> Hide history
+                      </>
+                    ) : (
+                      <>
+                        <FiChevronDown className="mr-1" /> Show history
+                      </>
+                    )}
+                  </button>
+                  
+                  {expandedStudent === student.id && (
+                    <div className="mt-4 pt-4 border-t border-gray-200">
+                      <h4 className="font-medium mb-2">Recent Attendance</h4>
+                      <div className="grid grid-cols-7 gap-1">
+                        {Array.apply(Array(7), null).map((_, i) => {
+                          const date = moment(i, 'e').startOf('week').isoWeekday(i + 1).format('YYYY-MM-DD');
+                          const historyItem = findAttendanceRecord(student.id, date);
+                          const status = historyItem?.status || 'not recorded';
+                          const statusInfo = statusOptions.find(opt => opt.value === status) || 
+                                          { color: '#9CA3AF', icon: <FiCalendar /> };
+                          
+                          return (
+                            <div key={date} className="text-center">
+                              <div className="text-xs text-gray-500">{moment(date).format('ddd')}</div>
+                              <div 
+                                className="mx-auto h-6 w-6 rounded-full flex items-center justify-center"
+                                style={{ 
+                                  backgroundColor: `${statusInfo.color}20`, 
+                                  border: `1px solid ${statusInfo.color}` 
+                                }}
+                              >
+                                {statusInfo.icon}
+                              </div>
+                              <div className="text-xs mt-1 capitalize">
+                                {status}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
-              
-              <button 
-                onClick={() => toggleStudentExpansion(student.id)}
-                className="text-sm text-blue-600 hover:text-blue-800 flex items-center"
-              >
-                {expandedStudent === student.id ? (
-                  <>
-                    <FiChevronUp className="mr-1" /> Hide details
-                  </>
-                ) : (
-                  <>
-                    <FiChevronDown className="mr-1" /> View weekly summary
-                  </>
-                )}
-              </button>
-              
-              {expandedStudent === student.id && (
-                <div className="mt-3 pt-3 border-t border-gray-200">
-                  <h5 className="font-medium text-gray-900 mb-2">Weekly Attendance</h5>
-                  <div className="grid grid-cols-7 gap-1">
-                    {Array.from({ length: 7 }).map((_, i) => {
-                      const date = moment().subtract(i, 'days').format('YYYY-MM-DD');
-                      const historyItem = studentAttendanceHistory.find(item => 
-                        item.date === date && item.student_id === student.id
-                      );
-                      const status = historyItem?.status || 'not recorded';
-                      
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+
+  // Render student view
+  const renderStudentView = () => (
+    <div className="bg-white rounded-lg shadow-sm p-6">
+      {students.length > 0 ? (
+        <>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+            <div className="flex items-center">
+              <div className="bg-gray-200 border-2 border-dashed rounded-xl w-16 h-16 mr-4" />
+              <div>
+                <h2 className="text-xl font-bold">
+                  {students.first_name} {students.last_name}
+                </h2>
+                <p className="text-gray-600">ID: {students.student_id || 'N/A'} | Grade {students.grade_level}</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-lg font-semibold">
+                {moment(selectedDate).format('dddd, MMMM D, YYYY')}
+              </div>
+              <div className="text-gray-600">
+                {classes.find(c => c.id === selectedClass)?.name || 'Class not selected'}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="font-medium text-gray-900 mb-2">Today's Status</h3>
+              {existingAttendance && existingAttendance.records.length > 0 ? (
+                <div className="flex items-center">
+                  {statusOptions.map(option => {
+                    if (option.value === existingAttendance.records[0].status) {
                       return (
-                        <div key={date} className="text-center">
-                          <div className="text-xs text-gray-500">{moment(date).format('ddd')}</div>
-                          <div className={`text-xs p-1 rounded ${
-                            status === 'present' ? 'bg-green-100 text-green-800' :
-                            status === 'absent' ? 'bg-red-100 text-red-800' :
-                            status === 'late' ? 'bg-yellow-100 text-yellow-800' :
-                            status === 'excused' ? 'bg-blue-100 text-blue-800' :
-                            'bg-gray-100 text-gray-800'
-                          }`}>
-                            {moment(date).format('D')}
+                        <div key={option.value} className="flex items-center">
+                          <div 
+                            className="h-10 w-10 rounded-full flex items-center justify-center mr-2"
+                            style={{ 
+                              backgroundColor: `${option.color}20`, 
+                              border: `1px solid ${option.color}` 
+                            }}
+                          >
+                            {option.icon}
+                          </div>
+                          <div>
+                            <div className="font-medium" style={{ color: option.color }}>
+                              {option.label}
+                            </div>
+                            <div className="text-sm text-gray-600">
+                              {existingAttendance.records[0].details || 'No details'}
+                            </div>
                           </div>
                         </div>
                       );
-                    })}
-                  </div>
+                    }
+                    return null;
+                  })}
                 </div>
+              ) : (
+                <div className="text-gray-500">No attendance recorded for today</div>
               )}
             </div>
-          ))}
+
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="font-medium text-gray-900 mb-2">Attendance Stats</h3>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span>Present:</span>
+                  <span className="font-medium">75% (15/20 days)</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div className="bg-green-600 h-2 rounded-full" style={{ width: '75%' }}></div>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>Absences: 3</span>
+                  <span>Late: 2</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="font-medium text-gray-900 mb-2">Recent Attendance</h3>
+              <div className="grid grid-cols-7 gap-1">
+                {Array.from({ length: 7 }).map((_, i) => {
+                  const date = moment().subtract(i, 'days').format('YYYY-MM-DD');
+                  const historyItem = findAttendanceRecord(students[0].id, date);
+                  const status = historyItem?.status || 'not recorded';
+                  const statusInfo = statusOptions.find(opt => opt.value === status) || 
+                                  { color: '#9CA3AF', icon: <FiCalendar /> };
+                  
+                  return (
+                    <div key={date} className="text-center">
+                      <div className="text-xs text-gray-500">{moment(date).format('ddd')}</div>
+                      <div 
+                        className="mx-auto h-6 w-6 rounded-full flex items-center justify-center"
+                        style={{ 
+                          backgroundColor: `${statusInfo.color}20`, 
+                          border: `1px solid ${statusInfo.color}` 
+                        }}
+                      >
+                        {statusInfo.icon}
+                      </div>
+                      <div className="text-xs mt-1 capitalize">
+                        {status}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="text-center py-8">
+          <FiUser className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+          <h3 className="text-lg font-medium text-gray-900">No student information found</h3>
         </div>
-      </div>
+      )}
+    </div>
+  );
+
+  // Render parent view
+  const renderParentView = () => (
+    <div className="bg-white rounded-lg shadow-sm p-6">
+      {children.length === 0 ? (
+        <div className="text-center py-8">
+          <FiUser className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+          <h3 className="text-lg font-medium text-gray-900">No children registered</h3>
+          <p className="mt-1 text-sm text-gray-500">Please contact the school to register your children</p>
+        </div>
+      ) : students.length === 0 ? (
+        <div className="text-center py-8">
+          <FiUser className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+          <h3 className="text-lg font-medium text-gray-900">No attendance data available</h3>
+          <p className="mt-1 text-sm text-gray-500">Select a child and class to view attendance</p>
+        </div>
+      ) : (
+        <>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+            <div className="flex items-center">
+              <div className="bg-gray-200 border-2 border-dashed rounded-xl w-16 h-16 mr-4" />
+              <div>
+                <h2 className="text-xl font-bold">
+                  {students[0].first_name} {students[0].last_name}
+                </h2>
+                <p className="text-gray-600">ID: {students[0].student_id || 'N/A'} | Grade {students[0].grade_level}</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-lg font-semibold">
+                {moment(selectedDate).format('dddd, MMMM D, YYYY')}
+              </div>
+              <div className="text-gray-600">
+                {classes.find(c => c.id === selectedClass)?.name || 'Class not selected'}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="font-medium text-gray-900 mb-2">Today's Status</h3>
+              {existingAttendance && existingAttendance.records.length > 0 ? (
+                <div className="flex items-center">
+                  {statusOptions.map(option => {
+                    if (option.value === existingAttendance.records[0].status) {
+                      return (
+                        <div key={option.value} className="flex items-center">
+                          <div 
+                            className="h-10 w-10 rounded-full flex items-center justify-center mr-2"
+                            style={{ 
+                              backgroundColor: `${option.color}20`, 
+                              border: `1px solid ${option.color}` 
+                            }}
+                          >
+                            {option.icon}
+                          </div>
+                          <div>
+                            <div className="font-medium" style={{ color: option.color }}>
+                              {option.label}
+                            </div>
+                            <div className="text-sm text-gray-600">
+                              {existingAttendance.records[0].details || 'No details'}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })}
+                </div>
+              ) : (
+                <div className="text-gray-500">No attendance recorded for today</div>
+              )}
+            </div>
+
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="font-medium text-gray-900 mb-2">Attendance Stats</h3>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span>Present:</span>
+                  <span className="font-medium">80% (16/20 days)</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div className="bg-green-600 h-2 rounded-full" style={{ width: '80%' }}></div>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>Absences: 2</span>
+                  <span>Late: 2</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="font-medium text-gray-900 mb-2">Recent Attendance</h3>
+              <div className="grid grid-cols-7 gap-1">
+                {Array.from({ length: 7 }).map((_, i) => {
+                  const date = moment().subtract(i, 'days').format('YYYY-MM-DD');
+                  const historyItem = findAttendanceRecord(students[0].id, date);
+                  const status = historyItem?.status || 'not recorded';
+                  const statusInfo = statusOptions.find(opt => opt.value === status) || 
+                                  { color: '#9CA3AF', icon: <FiCalendar /> };
+                  
+                  return (
+                    <div key={date} className="text-center">
+                      <div className="text-xs text-gray-500">{moment(date).format('ddd')}</div>
+                      <div 
+                        className="mx-auto h-6 w-6 rounded-full flex items-center justify-center"
+                        style={{ 
+                          backgroundColor: `${statusInfo.color}20`, 
+                          border: `1px solid ${statusInfo.color}` 
+                        }}
+                      >
+                        {statusInfo.icon}
+                      </div>
+                      <div className="text-xs mt-1 capitalize">
+                        {status}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 
@@ -646,100 +1183,198 @@ const AttendanceTracker = () => {
         </div>
         
         <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-          {user?.role !== 'student' && user?.role !== 'parent' && (
-            <>
-              <select 
-                value={selectedClass || ''}
-                onChange={(e) => setSelectedClass(e.target.value ? parseInt(e.target.value) : null)}
-                className='p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500'
-                disabled={loading || classes.length === 0}
-              >
-                <option value="">Select Class</option>
-                {classes.map(cls => (
-                  <option key={cls.id} value={cls.id}>
-                    {cls.name} - Grade {cls.grade_level}
-                  </option>
-                ))}
-              </select>
-              
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setViewMode('daily')}
-                  className={`px-3 py-2 rounded-md text-sm ${
-                    viewMode === 'daily' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  Daily View
-                </button>
-                <button
-                  onClick={() => setViewMode('range')}
-                  className={`px-3 py-2 rounded-md text-sm ${
-                    viewMode === 'range' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  Date Range
-                </button>
-              </div>
-            </>
+          {/* Child selection for parent */}
+          {user?.role === 'parent' && children.length > 0 && (
+            <select 
+              value={selectedChild || ''}
+              onChange={async (e) => {
+                const childId = parseInt(e.target.value);
+                setSelectedChild(childId);
+                setLoading(true);
+                try {
+                  const res = await api.get(`/enrollments/student/${childId}/classes`);
+                  setClasses(res.data);
+                  setSelectedClass(res.data.length > 0 ? res.data[0].id : null);
+                } catch (error) {
+                  toast.error('Failed to load classes for the selected child');
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              className="p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+              disabled={loading}
+            >
+              {children.map(child => (
+                <option key={child.id} value={child.id}>
+                  {child.first_name} {child.last_name}
+                </option>
+              ))}
+            </select>
           )}
           
+          {/* Class selection */}
+          {(user?.role === 'admin' || user?.role === 'teacher') && (
+            <select 
+              value={selectedClass || ''}
+              onChange={(e) => setSelectedClass(e.target.value ? parseInt(e.target.value) : null)}
+              className='p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500'
+              disabled={loading || classes.length === 0}
+            >
+              <option value="">Select Class</option>
+              {classes.map(cls => (
+                <option key={cls.id} value={cls.id}>
+                  {cls.name} - Grade {cls.grade_level}
+                </option>
+              ))}
+            </select>
+          )}
+          
+          {/*{(user?.role === 'parent') && classes.length > 0 && (
+            <select 
+              value={selectedClass || ''}
+              onChange={(e) => setSelectedClass(e.target.value ? parseInt(e.target.value) : null)}
+              className='p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500'
+              disabled={loading}
+            >
+              <option value="">Select Class</option>
+              {classes.map(cls => (
+                <option key={cls.id} value={cls.id}>
+                  {cls.name} - Grade {cls.grade_level}
+                </option>
+              ))}
+            </select>
+          )}*/}
+          
+          {/* View mode selection */}
+          {(user?.role === 'admin' || user?.role === 'teacher') && (
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setViewMode('daily')}
+                className={`px-3 py-2 rounded-md text-sm ${
+                  viewMode === 'daily' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Daily
+              </button>
+              <button
+                onClick={() => setViewMode('range')}
+                className={`px-3 py-2 rounded-md text-sm ${
+                  viewMode === 'range' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Range
+              </button>
+              <button
+                onClick={() => setViewMode('monthly')}
+                className={`px-3 py-2 rounded-md text-sm ${
+                  viewMode === 'monthly' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                Monthly
+              </button>
+            </div>
+          )}
+          
+          {/* Date selection */}
           {viewMode === 'daily' ? (
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-              max={moment().format('YYYY-MM-DD')}
-              disabled={loading || (user?.role !== 'admin' && user?.role !== 'teacher')}
-            />
+            <div className="relative">
+              <FiCalendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="pl-10 p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                max={moment().format('YYYY-MM-DD')}
+                disabled={loading || (user?.role !== 'admin' && user?.role !== 'teacher')}
+              />
+            </div>
+          ) : viewMode === 'range' ? (
+            <div className="flex items-center space-x-2">
+              <div className="relative">
+                <FiCalendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                <input
+                  type="date"
+                  value={dateRange.start}
+                  onChange={(e) => setDateRange({...dateRange, start: e.target.value})}
+                  className="pl-10 p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                  max={moment().format('YYYY-MM-DD')}
+                />
+              </div>
+              <span className="text-gray-500">to</span>
+              <div className="relative">
+                <FiCalendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                <input
+                  type="date"
+                  value={dateRange.end}
+                  onChange={(e) => setDateRange({...dateRange, end: e.target.value})}
+                  className="pl-10 p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                  max={moment().format('YYYY-MM-DD')}
+                />
+              </div>
+            </div>
           ) : (
             <div className="flex items-center space-x-2">
-              <input
-                type="date"
-                value={dateRange.start}
-                onChange={(e) => setDateRange({...dateRange, start: e.target.value})}
-                className="p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                max={moment().format('YYYY-MM-DD')}
-              />
-              <span>to</span>
-              <input
-                type="date"
-                value={dateRange.end}
-                onChange={(e) => setDateRange({...dateRange, end: e.target.value})}
-                className="p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                max={moment().format('YYYY-MM-DD')}
-              />
+              <div className="relative">
+                <FiCalendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                <input
+                  type="month"
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="pl-10 p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+                  max={moment().format('YYYY-MM')}
+                />
+              </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Status Summary */}
-      {(user?.role === 'admin' || user?.role === 'teacher') && students.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          {statusOptions.map(status => (
-            <div key={status.value} className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
-              <div className="flex items-center">
-                <div 
-                  className="h-10 w-10 rounded-full flex items-center justify-center mr-3"
-                  style={{ backgroundColor: `${status.color}20`, border: `1px solid ${status.color}` }}
-                >
-                  {status.icon}
-                </div>
-                <div>
-                  <div className="text-2xl font-bold" style={{ color: status.color }}>
-                    {statusCounts[status.value]}
-                  </div>
-                  <div className="text-sm text-gray-600">{status.label}</div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* Main Content */}
-      {loading ? (
+      {viewMode === 'monthly' ? (
+        <div className="bg-white rounded-lg shadow-sm p-6">
+          <h3 className="text-xl font-medium text-gray-900 mb-4">
+            Monthly Attendance - {moment(selectedMonth).format('MMMM YYYY')}
+          </h3>
+          <div className="grid grid-cols-7 gap-1 mb-4">
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+              <div key={day} className="text-center text-sm font-medium text-gray-500 p-2">
+                {day}
+              </div>
+            ))}
+            {Array.from({ length: moment(selectedMonth).startOf('month').day() }).map((_, i) => (
+              <div key={`empty-${i}`} className="p-4"></div>
+            ))}
+            {Array.from({ length: moment(selectedMonth).daysInMonth() }).map((_, i) => {
+              const day = i + 1;
+              const date = moment(selectedMonth).date(day).format('YYYY-MM-DD');
+              const dayAttendance = monthAttendance.find(a => a.attendance_date === date);
+              
+              return (
+                <div 
+                  key={date} 
+                  className={`p-3 border rounded-lg text-center ${
+                    dayAttendance ? 'bg-blue-50 border-blue-200' : 'bg-gray-50'
+                  }`}
+                >
+                  <div className="text-sm">{day}</div>
+                  {dayAttendance && (
+                    <div className="mt-1 flex justify-center">
+                      <div className="text-xs bg-green-100 text-green-800 px-1 rounded">
+                        {dayAttendance.records.filter(r => r.status === 'present').length} P
+                      </div>
+                      {dayAttendance.records.some(r => r.status !== 'present') && (
+                        <div className="text-xs bg-red-100 text-red-800 px-1 rounded ml-1">
+                          {dayAttendance.records.filter(r => r.status !== 'present').length} A
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : loading ? (
         <div className="flex justify-center items-center p-12">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
         </div>

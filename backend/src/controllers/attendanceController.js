@@ -1,16 +1,22 @@
 import { pool } from "../config/db.js";
 import Attendance from "../models/Attendance.js";
 
+
 const attendanceController = {
 saveAttendance: async (req, res) => {
+  let attendanceId;
   const { classId, date, remark, records } = req.body;
+
+  attendanceId = req.params.id;
+
   try {
     try {
       await pool.query('BEGIN');
-      
-      const attendanceId = await Attendance.createOrUpdateAttendance(
+      if (!attendanceId) { 
+        attendanceId = await Attendance.createOrUpdateAttendance(
         classId, date, remark
       );
+      }
       
       await Attendance.deleteAttendanceRecords(attendanceId);
       
@@ -50,6 +56,18 @@ getAttendanceHistory: async (req, res) => {
   try {
     const { classId, start, end } = req.query;
     const history = await Attendance.getAttendanceHistory(classId, start, end);
+    res.json(history);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error' });
+  }
+},
+
+getStudentHistory: async (req, res) => {
+  try {
+    const studentId = req.params.id;
+    const { start, end } = req.query;
+    const history = await Attendance.getStudentHistory(studentId, start, end);
     res.json(history);
   } catch (error) {
     console.error(error);

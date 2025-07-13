@@ -45,10 +45,11 @@ class Enrollment {
 
   static async getClassStudents(classId) {
     const { rows } = await pool.query(
-      `SELECT *
+      `SELECT s.id, u.first_name,  u.last_name, s.student_id, c.name AS class_name, c.grade_level, c.teacher_id
        FROM enrollment e
        JOIN students s ON e.student_id = s.id
        JOIN users u ON s.id = u.id
+        JOIN classes c ON e.class_id = c.id
        WHERE e.class_id = $1`,
       [classId]
     );
@@ -57,9 +58,10 @@ class Enrollment {
 
   static async getStudentEnrollments(studentId) {
     const { rows } = await pool.query(
-     `SELECT e.*, c.name as class_name, c.subject
+     `SELECT e.*, c.name as class_name, ct.subject
       FROM enrollment e
       JOIN classes c ON e.class_id = c.id
+      JOIN class_teachers ct ON e.class_id = ct.class_id
       JOIN users u ON u.id = e.student_id
       WHERE e.student_id = $1`,
       [studentId]
