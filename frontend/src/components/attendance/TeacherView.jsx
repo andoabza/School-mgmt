@@ -1,52 +1,35 @@
 import React from 'react';
-import moment from 'moment';
-import { 
-  FiEdit, FiSave, FiClock, FiAlertCircle, FiCheckCircle, 
-  FiXCircle, FiUser, FiCalendar, FiFilter, FiChevronDown, 
-  FiChevronUp, FiSearch, FiBarChart2, FiGrid, FiList, FiPrinter 
-} from 'react-icons/fi';
+import { FiAlertCircle, FiCheckCircle, FiClock, FiXCircle, FiGrid, FiList, FiPrinter, FiSave, FiSearch } from 'react-icons/fi';
 import { CSVLink } from 'react-csv';
 
-export const AdminView = ({
+export default function TeacherView ({
   students,
   attendance,
-  selectedDate,
+  handleStatusChange,
   loading,
-  lateModal,
-  setLateModal,
-  excusedModal,
-  setExcusedModal,
+  existingAttendance,
   remark,
   setRemark,
-  classes,
-  selectedClass,
-  existingAttendance,
-  dateRange,
-  viewMode,
-  expandedStudent,
-  setExpandedStudent,
-  studentAttendanceHistory,
+  submitAttendance,
+  statusOptions,
   searchTerm,
   setSearchTerm,
   statusFilter,
   setStatusFilter,
+  attendanceStats,
   displayMode,
   setDisplayMode,
-  selectedMonth,
-  monthAttendance,
   exportData,
-  statusOptions,
-  attendanceStats,
-  handleStatusChange,
-  findAttendanceRecord,
-  markAll,
-  submitAttendance,
-  filteredStudents
-}) => {
-  const weekStart = moment().startOf('isoWeek');
+  filteredStudents,
+  expandedStudent,
+  setExpandedStudent,
+  fetchMonthAttendance,
+  classes,
+  selectedClass
+}) {
   return (
     <>
-      {!existingAttendance && viewMode === 'daily' && (
+      {!existingAttendance && (
         <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
           <div className="flex">
             <div className="flex-shrink-0">
@@ -54,7 +37,7 @@ export const AdminView = ({
             </div>
             <div className="ml-3">
               <p className="text-sm text-yellow-700">
-                <strong>No attendance recorded for {moment(selectedDate).format('MMM D, YYYY')}.</strong> 
+                <strong>No attendance recorded for today.</strong> 
                 {' '}Please mark attendance and save.
               </p>
             </div>
@@ -64,19 +47,6 @@ export const AdminView = ({
       
       <div className="flex flex-col sm:flex-row justify-between gap-3 mb-6">
         <div className="flex flex-wrap gap-2">
-          <select
-            onChange={(e) => markAll(e.target.value || 'present')}
-            className="p-2 border border-gray-300 rounded-md bg-white"
-            disabled={loading}
-          >
-            <option value="">Mark All As</option>
-            {statusOptions.map(option => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          
           <textarea
             placeholder="Add remarks about today's class..."
             value={remark}
@@ -99,7 +69,7 @@ export const AdminView = ({
           {exportData.length > 0 && (
             <CSVLink 
               data={exportData} 
-              filename={`attendance-${selectedDate}-${classes.find(c => c.id === selectedClass)?.name || 'class'}.csv`}
+              filename={`attendance-${classes.find(c => c.id === selectedClass)?.name || 'class'}.csv`}
               className="px-3 py-2 bg-blue-600 text-white rounded-md flex items-center"
             >
               <FiPrinter className="mr-1" /> Export CSV
@@ -230,7 +200,7 @@ export const AdminView = ({
                               {student.first_name} {student.last_name}
                             </div>
                             <div className="text-sm text-gray-500">
-                              Grade: {student.grade_level} | Class: {student.class_name}
+                              Grade: {student.grade_level}
                             </div>
                           </div>
                         </div>
@@ -287,8 +257,9 @@ export const AdminView = ({
                             <h4 className="font-medium mb-2">Attendance History (Last 7 Days)</h4>
                             <div className="grid grid-cols-1 sm:grid-cols-7 gap-2">
                               {Array.from({ length: 7 }).map((_, i) => {
-                                const date = weekStart.clone().add(i, 'days').format('YYYY-MM-DD');
-                                const historyItem = findAttendanceRecord(student.id, date);
+                                const date = moment().subtract(i, 'days').format('YYYY-MM-DD');
+                                const historyItem = fetchMonthAttendance(student.id);
+                                console.log(historyItem);
                                 const status = historyItem?.status || 'not recorded';
                                 const statusInfo = statusOptions.find(opt => opt.value === status) || 
                                                  { color: '#9CA3AF', icon: <FiCalendar /> };
@@ -341,7 +312,7 @@ export const AdminView = ({
                         {student.first_name} {student.last_name}
                       </h3>
                       <p className="text-sm text-gray-500">
-                        ID: {student.student_id || 'N/A'} | Grade {student.grade_level}
+                        ID: {student.student_id || 'N/A'}
                       </p>
                     </div>
                   </div>
@@ -396,8 +367,8 @@ export const AdminView = ({
                     <div className="mt-4 pt-4 border-t border-gray-200">
                       <h4 className="font-medium mb-2">Recent Attendance</h4>
                       <div className="grid grid-cols-7 gap-1">
-                        {Array.apply(Array(7), null).map((_, i) => {
-                          const date = moment(i, 'e').startOf('week').isoWeekday(i + 1).format('YYYY-MM-DD');
+                        {Array.from({ length: 7 }).map((_, i) => {
+                          const date = moment().subtract(i, 'days').format('YYYY-MM-DD');
                           const historyItem = findAttendanceRecord(student.id, date);
                           const status = historyItem?.status || 'not recorded';
                           const statusInfo = statusOptions.find(opt => opt.value === status) || 

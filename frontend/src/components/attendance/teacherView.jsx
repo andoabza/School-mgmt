@@ -1,10 +1,13 @@
-// teacherView.jsx
-import React from 'react';
-import { FiAlertCircle, FiCheckCircle, FiClock, FiXCircle, FiGrid, FiList, FiPrinter, FiSave } from 'react-icons/fi';
+import React, { useState } from 'react';
+import moment from 'moment';
+import { 
+  FiEdit, FiSave, FiClock, FiAlertCircle, FiCheckCircle, 
+  FiXCircle, FiUser, FiCalendar, FiFilter, FiChevronDown, 
+  FiChevronUp, FiSearch, FiBarChart2, FiGrid, FiList, FiPrinter 
+} from 'react-icons/fi';
 import { CSVLink } from 'react-csv';
 
 export const TeacherView = ({
-  students,
   attendance,
   handleStatusChange,
   loading,
@@ -24,10 +27,11 @@ export const TeacherView = ({
   filteredStudents,
   expandedStudent,
   setExpandedStudent,
-  findAttendanceRecord,
+  fetchMonthAttendance,
   classes,
   selectedClass
 }) => {
+  
   return (
     <>
       {!existingAttendance && (
@@ -236,7 +240,8 @@ export const TeacherView = ({
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-500">
                         <button 
-                          onClick={() => setExpandedStudent(expandedStudent === student.id ? null : student.id)}
+                    onClick={() => setExpandedStudent(expandedStudent === student.id ? null : student.id)}
+
                           className="flex items-center"
                         >
                           {expandedStudent === student.id ? (
@@ -258,9 +263,11 @@ export const TeacherView = ({
                             <h4 className="font-medium mb-2">Attendance History (Last 7 Days)</h4>
                             <div className="grid grid-cols-1 sm:grid-cols-7 gap-2">
                               {Array.from({ length: 7 }).map((_, i) => {
-                                const date = moment().subtract(i, 'days').format('YYYY-MM-DD');
-                                const historyItem = findAttendanceRecord(student.id, date);
+                                const date = moment().startOf('week').add(i, 'days').format('YYYY-MM-DD');
+                                const historyItem = fetchMonthAttendance(student.id);
+                                
                                 const status = historyItem?.status || 'not recorded';
+                                console.log(i);
                                 const statusInfo = statusOptions.find(opt => opt.value === status) || 
                                                  { color: '#9CA3AF', icon: <FiCalendar /> };
                                 
@@ -368,8 +375,8 @@ export const TeacherView = ({
                       <h4 className="font-medium mb-2">Recent Attendance</h4>
                       <div className="grid grid-cols-7 gap-1">
                         {Array.from({ length: 7 }).map((_, i) => {
-                          const date = moment().subtract(i, 'days').format('YYYY-MM-DD');
-                          const historyItem = findAttendanceRecord(student.id, date);
+                          const date = moment().startOf('week').add(i, 'days').format('YYYY-MM-DD');
+                          const historyItem = history(student.id);
                           const status = historyItem?.status || 'not recorded';
                           const statusInfo = statusOptions.find(opt => opt.value === status) || 
                                           { color: '#9CA3AF', icon: <FiCalendar /> };

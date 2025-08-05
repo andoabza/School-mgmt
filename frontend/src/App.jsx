@@ -18,7 +18,7 @@ import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import UserManagement from './components/UserManagement';
 import Scheduler from './components/Scheduler';
-import AttendanceTracker from './components/AttendanceTracker';
+import AttendanceTracker from './components/attendance/AttendanceTracker';
 import Gradebook from './components/Gradebook';
 import ParentPortal from './components/ParentPortal';
 import NotificationCenter from './components/NotificationCenter';
