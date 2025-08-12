@@ -8,7 +8,7 @@ import {
   FiClock, FiAlertCircle, FiEdit, FiTrash2,
   FiPlus, FiSearch, FiChevronDown, FiChevronUp,
   FiDownload, FiFilter, FiBarChart2, FiTrendingUp,
-  FiAward, FiRefreshCw, FiSave
+  FiAward, FiRefreshCw
 } from 'react-icons/fi';
 import { Bar, Pie } from 'react-chartjs-2';
 import 'chart.js/auto';
@@ -54,9 +54,7 @@ const AttendanceSystem = () => {
         if (user?.role === 'admin') {
           const classesRes = await api.get('/classes');
           setClasses(classesRes.data);
-          if (classesRes.data.length > 0) {
-            setSelectedClass(classesRes.data[0].id);
-          }
+          setSelectedClass(classesRes.data[0].id);
         } 
         else if (user?.role === 'teacher') {
           const classesRes = await api.get(`/teacher/${user.id}/classes`);
@@ -73,11 +71,11 @@ const AttendanceSystem = () => {
           }
         } 
         else if (user?.role === 'student') {
-          const attendanceRes = await api.get(`/attendance?studentId=${user.id}&date=${date}`);
+          const attendanceRes = await api.get(`/students/${user.id}/attendance`);
           setStudentAttendance(attendanceRes.data);
         }
       } catch (error) {
-        toast.error(error.response.data.message);
+        toast.error('Failed to load data');
       } finally {
         setLoading(false);
       }
@@ -110,10 +108,10 @@ const AttendanceSystem = () => {
   const fetchClassStudents = async () => {
     try {
       setLoading(true);
-      const res = await api.get(`/class/${selectedClass}/students`);
+      const res = await api.get(`/enrollments/class/${selectedClass}/students`);
       setStudents(res.data);
     } catch (error) {
-      toast.error(error.response.data.message);
+      toast.error('Failed to load students');
     } finally {
       setLoading(false);
     }
@@ -122,15 +120,14 @@ const AttendanceSystem = () => {
   const fetchAttendanceRecords = async () => {
     try {
       setLoading(true);
-      let endpoint = `/attendance?date=${date}`;
-      if (selectedClass) endpoint += `&classId=${selectedClass}`;
+      let endpoint = `/attendance?date=${date}&classId=${selectedClass}`;
       if (user?.role === 'student') endpoint += `&studentId=${user.id}`;
       if (user?.role === 'parent' && selectedChild) endpoint += `&studentId=${selectedChild}`;
       
       const res = await api.get(endpoint);
-      setAttendanceRecords(res.data.records || []);
+      setAttendanceRecords(res.data);
     } catch (error) {
-      toast.error(error.response.data.message);
+        toast.error('Failed to load attendance records');
     } finally {
       setLoading(false);
     }
@@ -166,6 +163,7 @@ const AttendanceSystem = () => {
       return;
     }
 
+    // For admin/teacher view
     if (user?.role === 'admin' || user?.role === 'teacher') {
       const presentCount = attendanceRecords.filter(r => r.status === 'present').length;
       const absentCount = attendanceRecords.filter(r => r.status === 'absent').length;
@@ -178,10 +176,13 @@ const AttendanceSystem = () => {
         absentCount,
         lateCount,
         attendanceRate,
-        currentStreak: 0,
-        bestStreak: 0
+        currentStreak: 0, // These would need backend support
+        bestStreak: 0    // to calculate properly
       });
-    } else {
+    } 
+    // For student/parent view
+    else {
+      // Calculate streaks (simplified - would need proper backend support)
       let currentStreak = 0;
       let bestStreak = 0;
       let tempStreak = 0;
@@ -223,63 +224,105 @@ const AttendanceSystem = () => {
     setBulkStatus(status);
   };
 
-  const applyBulkStatus = () => {
-    if (!selectedClass || !date) {
-      toast.error('Please select a class and date first');
-      return;
-    }
-
-    const updatedRecords = students.map(student => {
-      const existingRecord = attendanceRecords.find(r => r.student_id === student.id);
+  // const applyBulkStatus = () => {
+  //   const updatedRecords = students.map(student => {
+  //     const existingRecord = attendanceRecords.find(r => r.student_id === student.id);
       
-      return {
-        ...(existingRecord || {}),
-        student_id: student.id,
-        student_name: `${student.first_name} ${student.last_name}`,
-        date,
-        class_id: selectedClass,
-        status: bulkStatus,
-        remark: bulkStatus === 'absent' ? 'Bulk marked absent' : 
-                bulkStatus === 'late' ? 'Bulk marked late' : 'Bulk marked present'
-      };
+  //     if (existingRecord) {
+  //       return {
+  //         ...existingRecord,
+  //         status: bulkStatus,
+  //         remark: bulkStatus === 'absent' ? 'Bulk marked absent' : 
+  //                 bulkStatus === 'late' ? 'Bulk marked late' : ''
+  //       };
+  //     } else {
+  //       return {
+  //         student_id: student.id,
+  //         date: date,
+  //         class_id: selectedClass,
+  //         status: bulkStatus,
+  //         remark: bulkStatus === 'absent' ? 'Bulk marked absent' : 
+  //                 bulkStatus === 'late' ? 'Bulk marked late' : ''
+  //       };
+  //     }
+  //   });
+
+  //   setAttendanceRecords(updatedRecords);
+  //   setShowBulkActions(false);
+  //   toast.success(`Bulk status applied: ${bulkStatus}`);
+  // };
+
+  // const saveBulkChanges = async () => {
+  //   try {
+  //     setLoading(true);
+  //     await api.post('/attendance', {
+  //       date,
+  //       classId: selectedClass,
+  //       records: attendanceRecords
+  //     });
+  //     toast.success('Attendance saved successfully');
+  //     fetchAttendanceRecords();
+  //   } catch (error) {
+  //     toast.error('Failed to save attendance');
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
+  const applyBulkStatus = () => {
+  if (!selectedClass || !date) {
+    toast.error('Please select a class and date first');
+    return;
+  }
+
+  const updatedRecords = students.map(student => {
+    const existingRecord = attendanceRecords.find(r => r.student_id === student.id);
+    
+    return {
+      ...(existingRecord || {}),
+      student_id: student.id,
+      student_name: `${student.first_name} ${student.last_name}`,
+      date,
+      class_id: selectedClass,
+      status: bulkStatus,
+      remark: bulkStatus === 'absent' ? 'Bulk marked absent' : 
+              bulkStatus === 'late' ? 'Bulk marked late' : 'Bulk marked present'
+    };
+  });
+
+  setAttendanceRecords(updatedRecords);
+  setShowBulkActions(false);
+  toast.success(`Bulk status applied: ${bulkStatus}`);
+};
+
+const saveBulkChanges = async () => {
+  try {
+    setLoading(true);
+    
+    const response = await api.post('/attendance', {
+      classId: selectedClass,
+      date,
+      remark: `${date} attendance`,
+      records: attendanceRecords.map(record => ({
+        studentId: record.student_id,
+        status: record.status,
+        details: record.remark || null
+      }))
     });
 
-    setAttendanceRecords(updatedRecords);
-    setShowBulkActions(false);
-    toast.success(`Bulk status applied: ${bulkStatus}`);
-  };
-
-  const saveBulkChanges = async () => {
-    try {
-      if (!selectedClass || !date) {
-        throw new Error('Class and date are required');
-      }
-
-      setLoading(true);
-      
-      const response = await api.post('/attendance', {
-        classId: selectedClass,
-        date,
-        remark: `Bulk attendance for ${moment(date).format('LL')}`,
-        records: attendanceRecords.map(record => ({
-          studentId: record.student_id,
-          status: record.status,
-          details: record.remark || null
-        }))
-      });
-
-      if (response.data.success) {
-        toast.success('Attendance saved successfully');
-        fetchAttendanceRecords();
-      } else {
-        throw new Error(response.data.message);
-      }
-    } catch (error) {
-      toast.error(error.message || 'Failed to save attendance');
-    } finally {
-      setLoading(false);
+    if (response.data.success) {
+      toast.success(response.data.message);
+      fetchAttendanceRecords();
+    } else {
+      throw new Error(response.data.message);
     }
-  };
+  } catch (error) {
+    toast.error(error.message);
+  } finally {
+    setLoading(false);
+  }
+};
+
+
 
   const exportToCSV = async () => {
     try {
@@ -302,11 +345,14 @@ const AttendanceSystem = () => {
     }
   };
 
-  const handleEditRecord = (studentId, field, value) => {
-    setAttendanceRecords(prev => prev.map(record => 
-      record.student_id === studentId ? { ...record, [field]: value } : record
-    ));
-  };
+  const filteredStudents = students.filter(student => {
+    const searchLower = searchTerm.toLowerCase();
+    return (
+      student.first_name.toLowerCase().includes(searchLower) ||
+      student.last_name.toLowerCase().includes(searchLower) ||
+      student.student_id.toLowerCase().includes(searchLower)
+    );
+  });
 
   const renderStatsCards = () => {
     if (user?.role === 'student' || user?.role === 'parent') {
@@ -511,9 +557,8 @@ const AttendanceSystem = () => {
     );
   };
 
-  const renderAdminTeacherView = () => (
+  const renderAdminView = () => (
     <div className="space-y-6">
-      {/* Header and controls */}
       <div className="flex flex-wrap gap-4 items-center justify-between">
         <div className="flex flex-wrap gap-4 items-center">
           <select
@@ -530,10 +575,16 @@ const AttendanceSystem = () => {
           </select>
           
           <div className="flex gap-2 bg-white p-1 rounded-lg shadow-sm">
-            <button onClick={() => setView('daily')} className={`px-3 py-1 rounded-md transition-all ${view === 'daily' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-gray-100'}`}>
+            <button
+              onClick={() => setView('daily')}
+              className={`px-3 py-1 rounded-md transition-all ${view === 'daily' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-gray-100'}`}
+            >
               Daily
             </button>
-            <button onClick={() => setView('monthly')} className={`px-3 py-1 rounded-md transition-all ${view === 'monthly' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-gray-100'}`}>
+            <button
+              onClick={() => setView('monthly')}
+              className={`px-3 py-1 rounded-md transition-all ${view === 'monthly' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-gray-100'}`}
+            >
               Monthly
             </button>
           </div>
@@ -600,19 +651,19 @@ const AttendanceSystem = () => {
             <div className="flex gap-2">
               <button
                 onClick={applyBulkStatus}
-                className="flex items-center gap-2 px-4 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                className="px-4 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700"
               >
-                <FiRefreshCw /> Apply
+                Apply
               </button>
               <button
                 onClick={saveBulkChanges}
-                className="flex items-center gap-2 px-4 py-1 bg-green-600 text-white rounded-md hover:bg-green-700"
+                className="px-4 py-1 bg-green-600 text-white rounded-md hover:bg-green-700"
               >
-                <FiSave /> Save
+                Save Changes
               </button>
               <button
                 onClick={() => setShowBulkActions(false)}
-                className="flex items-center gap-2 px-4 py-1 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
+                className="px-4 py-1 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
               >
                 Cancel
               </button>
@@ -654,69 +705,65 @@ const AttendanceSystem = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {students
-                      .filter(student => {
-                        const searchLower = searchTerm.toLowerCase();
-                        return (
-                          student.first_name.toLowerCase().includes(searchLower) ||
-                          student.last_name.toLowerCase().includes(searchLower) ||
-                          student.student_id.toLowerCase().includes(searchLower)
-                        );
-                      })
-                      .map(student => {
-                        const record = attendanceRecords.find(r => r.student_id === student.id);
-                        return (
-                          <tr key={student.id} className="hover:bg-gray-50">
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center">
-                                <div className="flex-shrink-0 h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-500">
-                                  {student.first_name.charAt(0)}{student.last_name.charAt(0)}
-                                </div>
-                                <div className="ml-4">
-                                  <div className="text-sm font-medium text-gray-900">
-                                    {student.first_name} {student.last_name}
-                                  </div>
-                                  <div className="text-sm text-gray-500">ID: {student.student_id}</div>
-                                </div>
+                    {filteredStudents.map(student => {
+                      if (attendanceRecords.length > 0){
+                      const record = attendanceRecords.filter(r => r.student_id === student.id);
+                      return (
+                        <tr key={student.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center">
+                              <div className="flex-shrink-0 h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-500">
+                                {student.first_name.charAt(0)}{student.last_name.charAt(0)}
                               </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <select
-                                value={record?.status || ''}
-                                onChange={(e) => handleEditRecord(student.id, 'status', e.target.value)}
-                                className={`p-1 rounded border ${
-                                  record?.status === 'present' ? 'bg-green-50 border-green-200' :
-                                  record?.status === 'absent' ? 'bg-red-50 border-red-200' :
-                                  record?.status === 'late' ? 'bg-yellow-50 border-yellow-200' :
-                                  'bg-gray-50 border-gray-200'
-                                }`}
-                              >
-                                <option value="present">Present</option>
-                                <option value="absent">Absent</option>
-                                <option value="late">Late</option>
-                                <option value="excused">Excused</option>
-                              </select>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <input
-                                type="text"
-                                value={record?.remark || ''}
-                                onChange={(e) => handleEditRecord(student.id, 'remark', e.target.value)}
-                                placeholder="Add remark..."
-                                className="p-1 border rounded w-full"
-                              />
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                              <button
-                                onClick={saveBulkChanges}
-                                className="text-blue-600 hover:text-blue-900"
-                              >
-                                <FiSave size={18} />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                              <div className="ml-4">
+                                <div className="text-sm font-medium text-gray-900">
+                                  {student.first_name} {student.last_name}
+                                </div>
+                                <div className="text-sm text-gray-500">ID: {student.student_id}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {record ? (
+                              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                                record.status === 'present' ? 'bg-green-100 text-green-800' :
+                                record.status === 'absent' ? 'bg-red-100 text-red-800' :
+                                record.status === 'late' ? 'bg-yellow-100 text-yellow-800' :
+                                'bg-blue-100 text-blue-800'
+                              }`}>
+                                {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
+                              </span>
+                            ):
+                            (
+                              <span className="text-gray-500">No record</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {record?.remark || '-'}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            {record && (
+                              <div className="flex gap-2">
+                                <button 
+                                  onClick={() => handleEdit(record)}
+                                  className="text-blue-600 hover:text-blue-900"
+                                  title="Edit"
+                                >
+                                  <FiEdit />
+                                </button>
+                                <button 
+                                  onClick={() => handleDelete(record.id)}
+                                  className="text-red-600 hover:text-red-900"
+                                  title="Delete"
+                                >
+                                  <FiTrash2 />
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+}})}
                   </tbody>
                 </table>
               </div>
@@ -750,224 +797,9 @@ const AttendanceSystem = () => {
       )}
     </div>
   );
-  const renderStudentView = () => (
-    <div className="space-y-6">
-      <div className="flex flex-wrap gap-4 items-center">
-        <div className="flex gap-2">
-          <button
-            onClick={() => setView('daily')}
-            className={`px-3 py-1 rounded ${view === 'daily' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
-          >
-            Daily
-          </button>
-          <button
-            onClick={() => setView('monthly')}
-            className={`px-3 py-1 rounded ${view === 'monthly' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
-          >
-            Monthly
-          </button>
-        </div>
-        
-        {view === 'daily' ? (
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="p-2 border rounded"
-          />
-        ) : (
-          <input
-            type="month"
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-            className="p-2 border rounded"
-          />
-        )}
-      </div>
-      
-      {view === 'daily' ? (
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold">
-              {moment(date).format('dddd, MMMM D, YYYY')}
-            </h2>
-            <div className="flex items-center gap-2">
-              <div className="w-10 h-10 rounded-full bg-gray-200"></div>
-              <div>
-                <div className="font-medium">{user?.firstName} {user?.lastName}</div>
-                <div className="text-sm text-gray-500">ID: {user?.studentId}</div>
-              </div>
-            </div>
-          </div>
-          
-          {attendanceRecords.length > 0 ? (
-            <div className="space-y-4">
-              {attendanceRecords.map(record => (
-                <div key={record.id} className="border rounded-lg p-4">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <div className="font-medium">
-                        {record.class_name} - Grade {record.grade_level}
-                      </div>
-                      <div className={`inline-block px-3 py-1 rounded-full text-sm mt-2 ${
-                        record.status === 'present' ? 'bg-green-100 text-green-800' :
-                        record.status === 'absent' ? 'bg-red-100 text-red-800' :
-                        record.status === 'late' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-blue-100 text-blue-800'
-                      }`}>
-                        {record.status}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm text-gray-500">
-                        {moment(record.date).format('h:mm A')}
-                      </div>
-                    </div>
-                  </div>
-                  {record.remark && (
-                    <div className="mt-3 p-3 bg-gray-50 rounded">
-                      <p className="text-sm">{record.remark}</p>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-gray-500">
-              No attendance records found for this date
-            </div>
-          )}
-        </div>
-      ) : (
-        <MonthlyAttendanceCalendar 
-          records={attendanceRecords} 
-          month={month}
-        />
-      )}
-    </div>
-  );
 
-  const renderParentView = () => (
-    <div className="space-y-6">
-      <div className="flex flex-wrap gap-4 items-center">
-        <select
-          value={selectedChild || ''}
-          onChange={(e) => setSelectedChild(e.target.value || null)}
-          className="p-2 border rounded"
-        >
-          <option value="">Select Child</option>
-          {children.map(child => (
-            <option key={child.id} value={child.id}>
-              {child.first_name} {child.last_name}
-            </option>
-          ))}
-        </select>
-        
-        <div className="flex gap-2">
-          <button
-            onClick={() => setView('daily')}
-            className={`px-3 py-1 rounded ${view === 'daily' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
-          >
-            Daily
-          </button>
-          <button
-            onClick={() => setView('monthly')}
-            className={`px-3 py-1 rounded ${view === 'monthly' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
-          >
-            Monthly
-          </button>
-        </div>
-        
-        {view === 'daily' ? (
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="p-2 border rounded"
-          />
-        ) : (
-          <input
-            type="month"
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-            className="p-2 border rounded"
-          />
-        )}
-      </div>
-      
-      {selectedChild ? (
-        view === 'daily' ? (
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold">
-                {moment(date).format('dddd, MMMM D, YYYY')}
-              </h2>
-              <div className="flex items-center gap-2">
-                <div className="w-10 h-10 rounded-full bg-gray-200"></div>
-                <div>
-                  <div className="font-medium">
-                    {children.find(c => c.id === selectedChild)?.first_name} 
-                    {' '}
-                    {children.find(c => c.id === selectedChild)?.last_name}
-                  </div>
-                  <div className="text-sm text-gray-500">
-                    ID: {children.find(c => c.id === selectedChild)?.student_id}
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            {attendanceRecords.length > 0 ? (
-              <div className="space-y-4">
-                {attendanceRecords.map(record => (
-                  <div key={record.id} className="border rounded-lg p-4">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <div className="font-medium">
-                          {record.class_name} - Grade {record.grade_level}
-                        </div>
-                        <div className={`inline-block px-3 py-1 rounded-full text-sm mt-2 ${
-                          record.status === 'present' ? 'bg-green-100 text-green-800' :
-                          record.status === 'absent' ? 'bg-red-100 text-red-800' :
-                          record.status === 'late' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-blue-100 text-blue-800'
-                        }`}>
-                          {record.status}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm text-gray-500">
-                          {moment(record.date).format('h:mm A')}
-                        </div>
-                      </div>
-                    </div>
-                    {record.remark && (
-                      <div className="mt-3 p-3 bg-gray-50 rounded">
-                        <p className="text-sm">{record.remark}</p>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                No attendance records found for this date
-              </div>
-            )}
-          </div>
-        ) : (
-          <MonthlyAttendanceCalendar 
-            records={attendanceRecords} 
-            month={month}
-          />
-        )
-      ) : (
-        <div className="text-center py-8 text-gray-500">
-          Please select a child to view attendance
-        </div>
-      )}
-    </div>
-  );
+  // ... (Other role views would follow similar patterns with their specific enhancements)
+
   return (
     <div className="container mx-auto p-4 md:p-6">
       <div className="flex justify-between items-center mb-6">
@@ -985,8 +817,10 @@ const AttendanceSystem = () => {
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
           <p className="mt-4 text-gray-600">Loading attendance data...</p>
         </div>
-      ) : user?.role === 'admin' || user?.role === 'teacher' ? (
-        renderAdminTeacherView()
+      ) : user?.role === 'admin' ? (
+        renderAdminView()
+      ) : user?.role === 'teacher' ? (
+        renderAdminView() // Similar to admin view with minor differences
       ) : user?.role === 'student' ? (
         renderStudentView()
       ) : user?.role === 'parent' ? (
@@ -1003,6 +837,7 @@ const AttendanceSystem = () => {
     </div>
   );
 };
+
 const MonthlyAttendanceView = ({ students, records, month }) => {
   const daysInMonth = moment(month).daysInMonth();
   const monthName = moment(month).format('MMMM YYYY');
@@ -1142,14 +977,14 @@ const MonthlyAttendanceCalendar = ({ records, month }) => {
   const daysInMonth = moment(month).daysInMonth();
   const firstDay = moment(month).startOf('month').day();
   const monthName = moment(month).format('MMMM YYYY');
-  // Calculate summary statistics // filter(r => r.status === 'present').length
-  const presentDays = records.data?.records[0]?.presentCount;
-  const absentDays = records.data?.records[0]?.absentCount;
-
-  const lateDays = records.data?.records[0]?.lateCount;
-  const excusedDays = records.data?.records[0]?.excusedCount;
-  const totalDays = records.data?.records[0]?.totalDays;
-  const attendanceRate = records.data?.records[0]?.attendanceRate;
+  
+  // Calculate summary statistics
+  const presentDays = records.filter(r => r.status === 'present').length;
+  const absentDays = records.filter(r => r.status === 'absent').length;
+  const lateDays = records.filter(r => r.status === 'late').length;
+  const excusedDays = records.filter(r => r.status === 'excused').length;
+  const totalDays = presentDays + absentDays + lateDays + excusedDays;
+  const attendanceRate = totalDays > 0 ? Math.round((presentDays / totalDays) * 100) : 0;
 
   // Find current streak
   let currentStreak = 0;
@@ -1305,4 +1140,655 @@ const MonthlyAttendanceCalendar = ({ records, month }) => {
     </div>
   );
 };
+
 export default AttendanceSystem;
+
+
+import { pool } from "../config/db.js";
+import Attendance from "../models/Attendance.js";
+
+const attendanceController = {
+  // Save or update attendance (for teachers/admins)
+  saveAttendance: async (req, res) => {
+    const { classId, date, remark, records } = req.body;
+    const attendanceId = req.params.id;
+
+    if (!classId || !date || !records) {
+      return res.status(400).json({ message: 'Missing required fields' });
+    }
+
+    try {
+      await pool.query('BEGIN');
+
+      // Use the provided ID or create/update based on classId and date
+      const effectiveAttendanceId = attendanceId || 
+        (await Attendance.createOrUpdateAttendance(classId, date, remark));
+
+      // Clear existing records
+      await Attendance.deleteAttendanceRecords(effectiveAttendanceId);
+
+      console.log(records);
+      // Insert new records with validation
+      for (const record of records) {
+        if (!record.studentId || !record.status) {
+          throw new Error(`Invalid record format for student ${record.studentId}`);
+        }
+        console.log(record);
+        
+        await Attendance.createAttendanceRecord(
+          effectiveAttendanceId,
+          record.studentId,
+          record.status,
+          record.details || null
+        );
+      }
+
+      await pool.query('COMMIT');
+      res.json({ 
+        success: true,
+        message: 'Attendance saved successfully',
+        attendanceId: effectiveAttendanceId
+      });
+    } catch (error) {
+      await pool.query('ROLLBACK');
+      console.error('Attendance save error:', error);
+      res.status(500).json({ 
+        success: false,
+        message: error.message || 'Failed to save attendance'
+      });
+    }
+  },
+
+  // Get attendance by class and date
+  getAttendance: async (req, res) => {
+    try {
+      const { classId, date } = req.query;
+      
+      if (!classId || !date) {
+        return res.status(400).json({ message: 'Class ID and date are required' });
+      }
+      
+      const attendance = await Attendance.getAttendanceByClassAndDate(classId, date);
+      
+      if (!attendance) {
+        return res.status(404).json({ message: 'Attendance record not found' });
+      }
+      
+      res.json(attendance);
+    } catch (error) {
+      console.error('Error getting attendance:', error);
+      res.status(500).json({ message: 'Failed to get attendance' });
+    }
+  },
+
+  // Get class attendance history
+  getAttendanceHistory: async (req, res) => {
+    try {
+      const { classId, start, end } = req.query;
+      
+      if (!classId || !start || !end) {
+        return res.status(400).json({ 
+          message: 'Class ID, start date, and end date are required' 
+        });
+      }
+      
+      const history = await Attendance.getAttendanceHistory(classId, start, end);
+      res.json(history);
+    } catch (error) {
+      console.error('Error getting attendance history:', error);
+      res.status(500).json({ message: 'Failed to get attendance history' });
+    }
+  },
+
+  // Get student attendance history
+  getStudentHistory: async (req, res) => {
+    try {
+      const { id: studentId } = req.params;
+      const { start, end } = req.query;
+      
+      if (!studentId) {
+        return res.status(400).json({ message: 'Student ID is required' });
+      }
+      
+      const history = await Attendance.getStudentHistory(studentId, start, end);
+      res.json(history);
+    } catch (error) {
+      console.error('Error getting student history:', error);
+      res.status(500).json({ message: 'Failed to get student history' });
+    }
+  },
+
+  // Get monthly attendance summary
+  getMonthlySummary: async (req, res) => {
+    try {
+      const { classId, studentId, month } = req.query;
+      
+      if (!month) {
+        return res.status(400).json({ message: 'Month is required (YYYY-MM)' });
+      }
+      
+      let summary;
+      if (classId) {
+        summary = await Attendance.getClassMonthlySummary(classId, month);
+      } else if (studentId) {
+        summary = await Attendance.getStudentMonthlySummary(studentId, month);
+      } else {
+        return res.status(400).json({ 
+          message: 'Either classId or studentId is required' 
+        });
+      }
+      
+      res.json(summary);
+    } catch (error) {
+      console.error('Error getting monthly summary:', error);
+      res.status(500).json({ message: 'Failed to get monthly summary' });
+    }
+  },
+
+  // Get class students
+  getClassStudents: async (req, res) => {
+    try {
+      const { classId } = req.params;
+      
+      if (!classId) {
+        return res.status(400).json({ message: 'Class ID is required' });
+      }
+      
+      const students = await Attendance.getClassStudents(classId);
+      res.json(students);
+    } catch (error) {
+      console.error('Error getting class students:', error);
+      res.status(500).json({ message: 'Failed to get class students' });
+    }
+  }
+};
+
+export default attendanceController;
+// import { pool } from "../config/db.js";
+// import Attendance from "../models/Attendance.js";
+
+
+// const attendanceController = {
+// saveAttendance: async (req, res) => {
+//   let attendanceId;
+//   const { classId, date, remark, records } = req.body;
+
+//   attendanceId = req.params.id;
+
+//   try {
+//     try {
+//       await pool.query('BEGIN');
+//       if (!attendanceId) { 
+//         attendanceId = await Attendance.createOrUpdateAttendance(
+//         classId, date, remark
+//       );
+//       }
+      
+//       await Attendance.deleteAttendanceRecords(attendanceId);
+      
+//       for (const record of records) {
+//         await Attendance.createAttendanceRecord(
+//           attendanceId,
+//           record.studentId,
+//           record.status,
+//           record.details
+//         );
+//       }
+      
+//       await pool.query('COMMIT');
+//       res.json({ message: 'Attendance saved successfully' });
+//     } catch (error) {
+//       await pool.query('ROLLBACK');
+//       throw error;
+//     }
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: 'Server error' });
+//   }
+// },
+
+// getAttendance: async (req, res) => {
+//   try {
+//     const { classId, date } = req.query;
+//     const attendance = await Attendance.getAttendanceByClassAndDate(classId, date);
+//     res.json(attendance);
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: 'Server error' });
+//   }
+// },
+
+// getAttendanceHistory: async (req, res) => {
+//   try {
+//     const { classId, start, end } = req.query;
+//     const history = await Attendance.getAttendanceHistory(classId, start, end);
+//     res.json(history);
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: 'Server error' });
+//   }
+// },
+
+// getStudentHistory: async (req, res) => {
+//   try {
+//     const studentId = req.params.id;
+//     const { start, end } = req.query;
+//     const history = await Attendance.getStudentHistory(studentId, start, end);
+//     res.json(history);
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: 'Server error' });
+//   }
+// }
+// }
+
+// export default attendanceController;
+
+// Updated Attendance.js model
+import { pool } from "../config/db.js";
+
+class Attendance {
+  // Create new attendance header
+  static async createOrUpdateAttendance(classId, date, remark = null) {
+    const { rows } = await pool.query(
+      `INSERT INTO attendance (class_id, attendance_date, remark)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (class_id, attendance_date) 
+       DO UPDATE SET remark = EXCLUDED.remark
+       RETURNING id`,
+      [classId, date, remark]
+    );
+    return rows[0].id;
+  }
+
+  static async deleteAttendanceRecords(attendanceId) {
+    const { rowCount } = await pool.query(
+      `DELETE FROM attendance_records
+       WHERE attendance_id = $1`,
+      [attendanceId]
+    );
+    return rowCount;
+  }
+
+  static async createAttendanceRecord(attendanceId, studentId, status, details = null) {
+    const { rows } = await pool.query(
+      `INSERT INTO attendance_records 
+       (attendance_id, student_id, status, details)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id`,
+      [attendanceId, studentId, status, details]
+    );
+    return rows[0];
+  }
+
+  // Get attendance by class and date
+  static async getAttendanceByClassAndDate(classId, date) {
+    if (!classId || !date) {
+      return;
+    }
+    const headerRes = await pool.query(
+      `SELECT id, remark FROM attendance
+       WHERE class_id = $1 AND attendance_date = $2`,
+      [classId, date]
+    );
+    
+    if (headerRes.rows.length === 0) return null;
+    
+    const recordsRes = await pool.query(
+      `SELECT ar.student_id, ar.status, ar.details,
+              u.first_name, u.last_name, s.student_id as student_number
+       FROM attendance_records ar
+       JOIN students s ON ar.student_id = s.id
+       JOIN users u ON s.id = u.id
+       WHERE ar.attendance_id = $1`,
+      [headerRes.rows[0].id]
+    );
+    
+    return {
+      ...headerRes.rows[0],
+      class_id: classId,
+      date,
+      records: recordsRes.rows
+    };
+  }
+
+  // Get class attendance history
+  static async getAttendanceHistory(classId, start, end) {
+    const { rows } = await pool.query(
+      `SELECT a.attendance_date, 
+              COUNT(ar.id) FILTER (WHERE ar.status = 'present') AS present,
+              COUNT(ar.id) FILTER (WHERE ar.status = 'absent') AS absent,
+              COUNT(ar.id) FILTER (WHERE ar.status = 'late') AS late,
+              COUNT(ar.id) FILTER (WHERE ar.status = 'excused') AS excused
+       FROM attendance a
+       LEFT JOIN attendance_records ar ON a.id = ar.attendance_id
+       WHERE a.class_id = $1 AND a.attendance_date BETWEEN $2 AND $3
+       GROUP BY a.attendance_date
+       ORDER BY a.attendance_date DESC`,
+      [classId, start, end]
+    );
+    return rows;
+  }
+
+  // Get student attendance history
+  static async getStudentHistory(studentId, start, end) {
+    const { rows } = await pool.query(
+      `SELECT a.attendance_date, a.class_id, c.name as class_name,
+              ar.status, ar.details
+       FROM attendance_records ar
+       JOIN attendance a ON ar.attendance_id = a.id
+       JOIN classes c ON a.class_id = c.id
+       WHERE ar.student_id = $1 
+         AND a.attendance_date BETWEEN $2 AND $3
+       ORDER BY a.attendance_date DESC`,
+      [studentId, start, end]
+    );
+    return rows;
+  }
+
+  // Get class monthly summary
+  static async getClassMonthlySummary(classId, month) {
+    const { rows } = await pool.query(
+      `SELECT 
+         s.id as student_id,
+         u.first_name,
+         u.last_name,
+         s.student_id as student_number,
+         COUNT(ar.id) FILTER (WHERE ar.status = 'present') AS present,
+         COUNT(ar.id) FILTER (WHERE ar.status = 'absent') AS absent,
+         COUNT(ar.id) FILTER (WHERE ar.status = 'late') AS late,
+         COUNT(ar.id) FILTER (WHERE ar.status = 'excused') AS excused
+       FROM students s
+       LEFT JOIN attendance_records ar ON s.id = ar.student_id
+       LEFT JOIN users u ON s.id = u.id
+       LEFT JOIN attendance a ON ar.attendance_id = a.id
+       WHERE s.id IN (SELECT student_id FROM enrollment WHERE class_id = $1)
+         AND to_char(a.attendance_date, 'YYYY-MM') = $2
+       GROUP BY s.id, u.first_name
+       ORDER BY u.last_name, u.first_name`,
+      [classId, month]
+    );
+    return rows;
+  }
+
+  // Get student monthly summary
+  static async getStudentMonthlySummary(studentId, month) {
+    const { rows } = await pool.query(
+      `SELECT 
+         a.attendance_date,
+         c.name as class_name,
+         ar.status,
+         ar.details
+       FROM attendance_records ar
+       JOIN attendance a ON ar.attendance_id = a.id
+       JOIN classes c ON a.class_id = c.id
+       WHERE ar.student_id = $1
+         AND to_char(a.attendance_date, 'YYYY-MM') = $2
+       ORDER BY a.attendance_date`,
+      [studentId, month]
+    );
+    return rows;
+  }
+
+  // Get class students
+  static async getClassStudents(classId) {
+    const { rows } = await pool.query(
+      `SELECT s.id, s.first_name, s.last_name, s.student_id, s.grade_level
+       FROM enrollment e
+       JOIN students s ON e.student_id = s.id
+       WHERE e.class_id = $1
+       ORDER BY s.last_name, s.first_name`,
+      [classId]
+    );
+    return rows;
+  }
+}
+
+//   static async createOrUpdateAttendance(classId, date, remark) {
+//     const { rows } = await pool.query(
+//       `INSERT INTO attendance (class_id, attendance_date, remark)
+//        VALUES ($1, $2, $3)
+//        ON CONFLICT (class_id, attendance_date) 
+//        DO UPDATE SET remark = EXCLUDED.remark
+//        RETURNING id`,
+//       [classId, date, remark]
+//     );
+//     return rows[0].id;
+//   }
+
+//   static async deleteAttendanceRecords(attendanceId) {
+//     await pool.query(
+//       `DELETE FROM attendance_records
+//        WHERE attendance_id = $1`,
+//       [attendanceId]
+//     );
+//   }
+
+//   static async createAttendanceRecord(attendanceId, studentId, status, details) {
+//     await pool.query(
+//       `INSERT INTO attendance_records 
+//        (attendance_id, student_id, status, details)
+//        VALUES ($1, $2, $3, $4)`,
+//       [attendanceId, studentId, status, details]
+//     );
+//   }
+
+//   static async getAttendanceByClassAndDate(classId, date) {
+//     const headerRes = await pool.query(
+//       `SELECT id, remark FROM attendance
+//        WHERE class_id = $1 AND attendance_date = $2`,
+//       [classId, date]
+//     );
+    
+//     if (headerRes.rows.length === 0) {
+//       return null;
+//     }
+    
+//     const attendance = headerRes.rows[0];
+//     const recordsRes = await pool.query(
+//       `SELECT student_id, status, details
+//        FROM attendance_records
+//        WHERE attendance_id = $1`,
+//       [attendance.id]
+//     );
+    
+//     return {
+//       id: attendance.id,
+//       class_id: classId,
+//       date,
+//       remark: attendance.remark,
+//       records: recordsRes.rows
+//     };
+//   }
+
+//   static async getAttendanceHistory(classId, start, end) {
+//     const { rows } = await pool.query(
+//       `SELECT a.class_id, a.attendance_date, a.remark, 
+//               COUNT(ar.id) FILTER (WHERE ar.status = 'present') AS present_count,
+//               COUNT(ar.id) FILTER (WHERE ar.status = 'absent') AS absent_count,
+//               COUNT(ar.id) FILTER (WHERE ar.status = 'late') AS late_count,
+//               COUNT(ar.id) FILTER (WHERE ar.status = 'excused') AS excused_count
+//        FROM attendance a
+//        LEFT JOIN attendance_records ar ON a.id = ar.attendance_id
+//        WHERE a.class_id = $1 AND a.attendance_date BETWEEN $2 AND $3
+//        GROUP BY a.id
+//        ORDER BY a.attendance_date DESC`,
+//       [classId, start, end]
+//     );
+//     return rows;
+//   }
+
+// static async getStudentHistory(studentId, start, end) {
+//     const { rows } = await pool.query(
+//       `SELECT a.id, ar.*
+//        FROM attendance_records ar
+//        LEFT JOIN attendance a ON ar.attendance_id = a.id
+//        WHERE ar.student_id = $1 AND a.attendance_date BETWEEN $2 AND $3
+//        GROUP BY a.attendance_date, a.id, ar.id
+//        ORDER BY a.attendance_date DESC`,
+//       [studentId, start, end]
+//     );
+//     return rows;
+//   }
+// }
+export default Attendance;
+
+// attendanceRoutes.js
+import express from 'express';
+const router = express.Router();
+import attendanceController from '../controllers/attendanceController.js';
+import auth from '../middleware/auth.js';
+
+// Teacher/Admin routes
+router.post('/', 
+  auth(['teacher', 'admin']), 
+  attendanceController.saveAttendance
+);
+router.put('/:id', 
+  auth(['teacher', 'admin']), 
+  attendanceController.saveAttendance
+);
+
+// General access routes
+router.get('/', attendanceController.getAttendance);
+router.get('/history', attendanceController.getAttendanceHistory);
+router.get('/student/:id', attendanceController.getStudentHistory);
+router.get('/monthly', attendanceController.getMonthlySummary);
+router.get('/class/:classId/students', 
+  attendanceController.getClassStudents
+);
+
+
+// router.post('/', attendanceController.saveAttendance);
+// router.put('/:id', attendanceController.saveAttendance);
+// router.get('/', attendanceController.getAttendance);
+// router.get('/history', attendanceController.getAttendanceHistory);
+// router.get('/student/:id', attendanceController.getStudentHistory);
+
+export default router;
+
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'teacher', 'student', 'parent')),
+    first_name VARCHAR(50) NOT NULL,
+    last_name VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+CREATE TABLE classes (
+  id SERIAL PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  subject VARCHAR(100) NOT NULL,
+  teacher_id INTEGER REFERENCES users(id),
+  grade_level INTEGER NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE classrooms (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    capacity INTEGER NOT NULL,
+    building VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE schedules (
+    id SERIAL PRIMARY KEY,
+    class_id INTEGER NOT NULL REFERENCES classes(id),
+    classroom_id INTEGER NOT NULL REFERENCES classrooms(id),
+    day_of_week SMALLINT NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
+    start_time TIME NOT NULL,
+    end_time TIME NOT NULL,
+    UNIQUE (classroom_id, day_of_week, start_time, end_time)
+);
+
+CREATE TABLE students (
+    id INTEGER PRIMARY KEY REFERENCES users(id),
+    student_id VARCHAR(20) UNIQUE NOT NULL,
+    birth_date DATE,
+    grade_level INTEGER,
+    section VARCHAR(1)
+);
+
+CREATE TABLE teachers (
+    id INTEGER PRIMARY KEY REFERENCES users(id),
+    subject VARCHAR(100) NOT NULL
+);
+
+CREATE TABLE parents (
+    id INTEGER PRIMARY KEY REFERENCES users(id)
+);
+
+CREATE TABLE student_parents (
+    student_id INTEGER REFERENCES students(id),
+    parent_id INTEGER REFERENCES parents(id),
+    PRIMARY KEY (student_id, parent_id)
+);
+
+
+-- CREATE TABLE attendance (
+--     id SERIAL PRIMARY KEY,
+--     class_id INTEGER NOT NULL REFERENCES classes(id),
+--     attendance_date DATE NOT NULL,
+--     remark TEXT,
+--     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+--     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+--     UNIQUE (class_id, date)
+-- );
+
+-- CREATE TABLE attendance_records (
+--     id SERIAL PRIMARY KEY,
+--     attendance_id INTEGER NOT NULL REFERENCES attendance(id),
+--     student_id INTEGER NOT NULL REFERENCES students(id),
+--     status VARCHAR(10) NOT NULL CHECK (status IN ('present', 'absent', 'late', 'excused')),
+--     details TEXT,
+--     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- );
+
+CREATE TABLE attendance (
+    id SERIAL PRIMARY KEY,
+    class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    attendance_date DATE NOT NULL,
+    remark TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    created_by INTEGER REFERENCES users(id),
+    UNIQUE (class_id, attendance_date)
+);
+
+CREATE TABLE attendance_records (
+    id SERIAL PRIMARY KEY,
+    attendance_id INTEGER NOT NULL REFERENCES attendance(id) ON DELETE CASCADE,
+    student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    status VARCHAR(10) NOT NULL CHECK (status IN ('present', 'absent', 'late', 'excused')),
+    details TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (attendance_id, student_id)
+);
+
+CREATE INDEX idx_attendance_records_student ON attendance_records(student_id);
+CREATE INDEX idx_attendance_records_status ON attendance_records(status);
+CREATE INDEX idx_attendance_date ON attendance(attendance_date);
+
+CREATE TABLE enrollment (
+    id SERIAL PRIMARY KEY,
+    class_id INTEGER NOT NULL REFERENCES classes(id),
+    student_id INTEGER NOT NULL REFERENCES students(id),
+    UNIQUE (class_id, student_id)
+);
+CREATE TABLE class_teachers (
+    id SERIAL PRIMARY KEY,
+    class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    teacher_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    subject VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (class_id, teacher_id, subject)
+);

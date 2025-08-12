@@ -61,7 +61,7 @@ const UserManagement = () => {
     section: '',
     subject: '',
     StudentId: '',
-    password: 'School@123',
+    password: '',
     resetPassword: false
   });
 
@@ -119,7 +119,7 @@ const UserManagement = () => {
   // User actions
   const updateUser = async (userId, updatedData) => {
     try {
-      await api.patch(`/users/${userId}`, updatedData);
+      await api.patch(`/users/${userId}/role`, updatedData);
       setUsers(users.map(user => 
         user.id === userId ? { ...user, ...updatedData } : user
       ));

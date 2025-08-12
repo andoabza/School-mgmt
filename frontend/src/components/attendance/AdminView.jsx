@@ -1,9 +1,8 @@
 import React from 'react';
 import moment from 'moment';
 import { 
-  FiEdit, FiSave, FiClock, FiAlertCircle, FiCheckCircle, 
-  FiXCircle, FiUser, FiCalendar, FiFilter, FiChevronDown, 
-  FiChevronUp, FiSearch, FiBarChart2, FiGrid, FiList, FiPrinter 
+  FiAlertCircle, FiCheckCircle, FiXCircle, FiClock, 
+  FiChevronDown, FiChevronUp, FiSave, FiSearch, FiGrid, FiList, FiPrinter 
 } from 'react-icons/fi';
 import { CSVLink } from 'react-csv';
 
@@ -12,28 +11,17 @@ export const AdminView = ({
   attendance,
   selectedDate,
   loading,
-  lateModal,
   setLateModal,
-  excusedModal,
   setExcusedModal,
   remark,
   setRemark,
-  classes,
-  selectedClass,
   existingAttendance,
-  dateRange,
-  viewMode,
-  expandedStudent,
-  setExpandedStudent,
-  studentAttendanceHistory,
   searchTerm,
   setSearchTerm,
   statusFilter,
   setStatusFilter,
   displayMode,
   setDisplayMode,
-  selectedMonth,
-  monthAttendance,
   exportData,
   statusOptions,
   attendanceStats,
@@ -46,7 +34,7 @@ export const AdminView = ({
   const weekStart = moment().startOf('isoWeek');
   return (
     <>
-      {!existingAttendance && viewMode === 'daily' && (
+      {!existingAttendance && (
         <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
           <div className="flex">
             <div className="flex-shrink-0">
@@ -99,7 +87,7 @@ export const AdminView = ({
           {exportData.length > 0 && (
             <CSVLink 
               data={exportData} 
-              filename={`attendance-${selectedDate}-${classes.find(c => c.id === selectedClass)?.name || 'class'}.csv`}
+              filename={`attendance-${selectedDate}.csv`}
               className="px-3 py-2 bg-blue-600 text-white rounded-md flex items-center"
             >
               <FiPrinter className="mr-1" /> Export CSV

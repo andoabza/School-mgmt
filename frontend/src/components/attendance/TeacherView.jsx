@@ -1,9 +1,12 @@
 import React from 'react';
-import { FiAlertCircle, FiCheckCircle, FiClock, FiXCircle, FiGrid, FiList, FiPrinter, FiSave, FiSearch } from 'react-icons/fi';
+import moment from 'moment';
+import { 
+  FiAlertCircle, FiCheckCircle, FiXCircle, FiClock, 
+  FiChevronDown, FiChevronUp, FiGrid, FiList, FiPrinter 
+} from 'react-icons/fi';
 import { CSVLink } from 'react-csv';
 
-export default function TeacherView ({
-  students,
+export const TeacherView = ({
   attendance,
   handleStatusChange,
   loading,
@@ -21,12 +24,9 @@ export default function TeacherView ({
   setDisplayMode,
   exportData,
   filteredStudents,
-  expandedStudent,
-  setExpandedStudent,
-  fetchMonthAttendance,
-  classes,
-  selectedClass
-}) {
+  findAttendanceRecord
+}) => {
+  const weekStart = moment().startOf('isoWeek');
   return (
     <>
       {!existingAttendance && (
@@ -69,7 +69,7 @@ export default function TeacherView ({
           {exportData.length > 0 && (
             <CSVLink 
               data={exportData} 
-              filename={`attendance-${classes.find(c => c.id === selectedClass)?.name || 'class'}.csv`}
+              filename={`attendance-${moment().format('YYYY-MM-DD')}.csv`}
               className="px-3 py-2 bg-blue-600 text-white rounded-md flex items-center"
             >
               <FiPrinter className="mr-1" /> Export CSV
@@ -178,9 +178,6 @@ export default function TeacherView ({
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Details
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  History
-                </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -190,105 +187,49 @@ export default function TeacherView ({
                 const statusInfo = statusOptions.find(opt => opt.value === status);
                 
                 return (
-                  <React.Fragment key={student.id}>
-                    <tr className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="bg-gray-200 border-2 border-dashed rounded-xl w-10 h-10" />
-                          <div className="ml-4">
-                            <div className="text-sm font-medium text-gray-900">
-                              {student.first_name} {student.last_name}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              Grade: {student.grade_level}
-                            </div>
+                  <tr key={student.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center">
+                        <div className="bg-gray-200 border-2 border-dashed rounded-xl w-10 h-10" />
+                        <div className="ml-4">
+                          <div className="text-sm font-medium text-gray-900">
+                            {student.first_name} {student.last_name}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            Grade: {student.grade_level}
                           </div>
                         </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {student.student_id || 'N/A'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          <div 
-                            className="h-8 w-8 rounded-full flex items-center justify-center"
-                            style={{ backgroundColor: `${statusInfo?.color}20`, border: `1px solid ${statusInfo?.color}` }}
-                          >
-                            {statusInfo.icon}
-                          </div>
-                          <select
-                            value={status}
-                            onChange={(e) => handleStatusChange(student.id, e.target.value)}
-                            className="p-1 border border-gray-300 rounded-md bg-white"
-                            disabled={loading}
-                          >
-                            {statusOptions.map(option => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {details || '-'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-500">
-                        <button 
-                          onClick={() => setExpandedStudent(expandedStudent === student.id ? null : student.id)}
-                          className="flex items-center"
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {student.student_id || 'N/A'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <div 
+                          className="h-8 w-8 rounded-full flex items-center justify-center"
+                          style={{ backgroundColor: `${statusInfo?.color}20`, border: `1px solid ${statusInfo?.color}` }}
                         >
-                          {expandedStudent === student.id ? (
-                            <>
-                              <FiChevronUp className="mr-1" /> Hide
-                            </>
-                          ) : (
-                            <>
-                              <FiChevronDown className="mr-1" /> View
-                            </>
-                          )}
-                        </button>
-                      </td>
-                    </tr>
-                    {expandedStudent === student.id && (
-                      <tr>
-                        <td colSpan="5" className="px-6 py-4 bg-gray-50">
-                          <div className="text-sm text-gray-700">
-                            <h4 className="font-medium mb-2">Attendance History (Last 7 Days)</h4>
-                            <div className="grid grid-cols-1 sm:grid-cols-7 gap-2">
-                              {Array.from({ length: 7 }).map((_, i) => {
-                                const date = moment().subtract(i, 'days').format('YYYY-MM-DD');
-                                const historyItem = fetchMonthAttendance(student.id);
-                                console.log(historyItem);
-                                const status = historyItem?.status || 'not recorded';
-                                const statusInfo = statusOptions.find(opt => opt.value === status) || 
-                                                 { color: '#9CA3AF', icon: <FiCalendar /> };
-                                
-                                return (
-                                  <div key={date} className="text-center p-2 bg-white rounded-lg border border-gray-200">
-                                    <div className="text-xs text-gray-500">{moment(date).format('ddd')}</div>
-                                    <div className="text-xs mb-1">{moment(date).format('MMM D')}</div>
-                                    <div 
-                                      className="mx-auto h-8 w-8 rounded-full flex items-center justify-center"
-                                      style={{ 
-                                        backgroundColor: `${statusInfo.color}20`, 
-                                        border: `1px solid ${statusInfo.color}` 
-                                      }}
-                                    >
-                                      {statusInfo.icon}
-                                    </div>
-                                    <div className="text-xs mt-1 capitalize">
-                                      {status}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
+                          {statusInfo.icon}
+                        </div>
+                        <select
+                          value={status}
+                          onChange={(e) => handleStatusChange(student.id, e.target.value)}
+                          className="p-1 border border-gray-300 rounded-md bg-white"
+                          disabled={loading}
+                        >
+                          {statusOptions.map(option => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {details || '-'}
+                    </td>
+                  </tr>
                 );
               })}
             </tbody>
@@ -347,54 +288,6 @@ export default function TeacherView ({
                       ))}
                     </select>
                   </div>
-                  
-                  <button 
-                    onClick={() => setExpandedStudent(expandedStudent === student.id ? null : student.id)}
-                    className="w-full mt-4 text-sm text-blue-600 hover:text-blue-800 flex items-center justify-center"
-                  >
-                    {expandedStudent === student.id ? (
-                      <>
-                        <FiChevronUp className="mr-1" /> Hide history
-                      </>
-                    ) : (
-                      <>
-                        <FiChevronDown className="mr-1" /> Show history
-                      </>
-                    )}
-                  </button>
-                  
-                  {expandedStudent === student.id && (
-                    <div className="mt-4 pt-4 border-t border-gray-200">
-                      <h4 className="font-medium mb-2">Recent Attendance</h4>
-                      <div className="grid grid-cols-7 gap-1">
-                        {Array.from({ length: 7 }).map((_, i) => {
-                          const date = moment().subtract(i, 'days').format('YYYY-MM-DD');
-                          const historyItem = findAttendanceRecord(student.id, date);
-                          const status = historyItem?.status || 'not recorded';
-                          const statusInfo = statusOptions.find(opt => opt.value === status) || 
-                                          { color: '#9CA3AF', icon: <FiCalendar /> };
-                          
-                          return (
-                            <div key={date} className="text-center">
-                              <div className="text-xs text-gray-500">{moment(date).format('ddd')}</div>
-                              <div 
-                                className="mx-auto h-6 w-6 rounded-full flex items-center justify-center"
-                                style={{ 
-                                  backgroundColor: `${statusInfo.color}20`, 
-                                  border: `1px solid ${statusInfo.color}` 
-                                }}
-                              >
-                                {statusInfo.icon}
-                              </div>
-                              <div className="text-xs mt-1 capitalize">
-                                {status}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
             );

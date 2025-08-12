@@ -1,5 +1,6 @@
 import React from 'react';
 import { FiUser, FiCalendar, FiCheckCircle, FiXCircle, FiClock, FiAlertCircle } from 'react-icons/fi';
+import moment from 'moment';
 
 export const ParentView = ({
   children,
@@ -13,13 +14,15 @@ export const ParentView = ({
   existingAttendance,
   selectedDate,
   studentAttendanceHistory,
-  statusOptions
+  statusOptions,
+  findAttendanceRecord
 }) => {
   const currentStudent = students.length > 0 ? students[0] : null;
   const studentAttendance = currentStudent 
     ? studentAttendanceHistory.filter(item => item.student_id === currentStudent?.id)
     : [];
-
+  const cls = classes.find(c => c.id === selectedClass);
+  
   return (
     <div className="bg-white rounded-lg shadow-sm p-6">
       {children.length === 0 ? (
@@ -51,12 +54,12 @@ export const ParentView = ({
                 {moment(selectedDate).format('dddd, MMMM D, YYYY')}
               </div>
               <div className="text-gray-600">
-                {classes.find(c => c.id === selectedClass)?.name || 'Class not selected'}
+                {cls?.name}
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-gray-50 p-4 rounded-lg">
               <h3 className="font-medium text-gray-900 mb-2">Today's Status</h3>
               {existingAttendance && existingAttendance.records && existingAttendance.records.length > 0 ? (
@@ -130,36 +133,38 @@ export const ParentView = ({
                 )}
               </div>
             </div>
-
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h3 className="font-medium text-gray-900 mb-2">Recent Attendance</h3>
-              <div className="grid grid-cols-7 gap-1">
-                {Array.from({ length: 7 }).map((_, i) => {
-                  const date = moment().subtract(i, 'days').format('YYYY-MM-DD');
-                  const historyItem = studentAttendance.find(item => item.date === date);
-                  const status = historyItem?.status || 'not recorded';
-                  const statusInfo = statusOptions.find(opt => opt.value === status) || 
-                                  { color: '#9CA3AF', icon: <FiCalendar /> };
-                  
-                  return (
-                    <div key={date} className="text-center">
-                      <div className="text-xs text-gray-500">{moment(date).format('ddd')}</div>
-                      <div 
-                        className="mx-auto h-6 w-6 rounded-full flex items-center justify-center"
-                        style={{ 
-                          backgroundColor: `${statusInfo.color}20`, 
-                          border: `1px solid ${statusInfo.color}` 
-                        }}
-                      >
-                        {statusInfo.icon}
-                      </div>
-                      <div className="text-xs mt-1 capitalize">
-                        {status}
-                      </div>
+          </div>
+          
+          <div className="bg-gray-50 p-4 rounded-lg mt-6">
+            <h3 className="font-medium text-gray-900 mb-2">Recent Attendance</h3>
+            <div className="grid grid-cols-7 gap-1">
+              {Array.from({ length: 7 }).map((_, i) => {
+                const date = moment().subtract(i, 'days').format('YYYY-MM-DD');
+                const historyItem = studentAttendance.find(item => 
+                  moment(item.date).format('YYYY-MM-DD') === date
+                );
+                const status = historyItem?.status || 'not recorded';
+                const statusInfo = statusOptions.find(opt => opt.value === status) || 
+                                { color: '#9CA3AF', icon: <FiCalendar /> };
+                
+                return (
+                  <div key={date} className="text-center">
+                    <div className="text-xs text-gray-500">{moment(date).format('ddd')}</div>
+                    <div 
+                      className="mx-auto h-6 w-6 rounded-full flex items-center justify-center"
+                      style={{ 
+                        backgroundColor: `${statusInfo.color}20`, 
+                        border: `1px solid ${statusInfo.color}` 
+                      }}
+                    >
+                      {statusInfo.icon}
                     </div>
-                  );
-                })}
-              </div>
+                    <div className="text-xs mt-1 capitalize">
+                      {status}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </>

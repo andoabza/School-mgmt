@@ -63,24 +63,50 @@ CREATE TABLE student_parents (
 );
 
 
+-- CREATE TABLE attendance (
+--     id SERIAL PRIMARY KEY,
+--     class_id INTEGER NOT NULL REFERENCES classes(id),
+--     attendance_date DATE NOT NULL,
+--     remark TEXT,
+--     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+--     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+--     UNIQUE (class_id, date)
+-- );
+
+-- CREATE TABLE attendance_records (
+--     id SERIAL PRIMARY KEY,
+--     attendance_id INTEGER NOT NULL REFERENCES attendance(id),
+--     student_id INTEGER NOT NULL REFERENCES students(id),
+--     status VARCHAR(10) NOT NULL CHECK (status IN ('present', 'absent', 'late', 'excused')),
+--     details TEXT,
+--     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- );
+
 CREATE TABLE attendance (
     id SERIAL PRIMARY KEY,
-    class_id INTEGER NOT NULL REFERENCES classes(id),
+    class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
     attendance_date DATE NOT NULL,
     remark TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (class_id, date)
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    created_by INTEGER REFERENCES users(id),
+    UNIQUE (class_id, attendance_date)
 );
 
 CREATE TABLE attendance_records (
     id SERIAL PRIMARY KEY,
-    attendance_id INTEGER NOT NULL REFERENCES attendance(id),
-    student_id INTEGER NOT NULL REFERENCES students(id),
+    attendance_id INTEGER NOT NULL REFERENCES attendance(id) ON DELETE CASCADE,
+    student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
     status VARCHAR(10) NOT NULL CHECK (status IN ('present', 'absent', 'late', 'excused')),
     details TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (attendance_id, student_id)
 );
+
+CREATE INDEX idx_attendance_records_student ON attendance_records(student_id);
+CREATE INDEX idx_attendance_records_status ON attendance_records(status);
+CREATE INDEX idx_attendance_date ON attendance(attendance_date);
 
 CREATE TABLE enrollment (
     id SERIAL PRIMARY KEY,
