@@ -68,7 +68,7 @@ class Class {
     try {
       const query = `
         SELECT 
-          c.id, c.name, c.subject, c.grade_level,
+          c.id, c.name, c.subject, c.grade_level, c.teacher_id,
           json_agg(
             json_build_object(
               'id', u.id,

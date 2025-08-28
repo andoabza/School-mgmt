@@ -35,6 +35,7 @@ const AttendanceSystem = () => {
   
   // Student states
   const [studentAttendance, setStudentAttendance] = useState([]);
+  const [error, setError] = useState('');
 
   // Statistics
   const [stats, setStats] = useState({
@@ -71,11 +72,11 @@ const AttendanceSystem = () => {
           if (childrenRes.data.length > 0) {
             setSelectedChild(childrenRes.data[0].id);
           }
+        } else if (user?.role === 'student') {
+          const classesRes = await api.get(`/enrollments/student/${user.id}/classes`);          
+          setSelectedClass(classesRes.data[0]?.class_id);
         } 
-        else if (user?.role === 'student') {
-          const attendanceRes = await api.get(`/attendance?studentId=${user.id}&date=${date}`);
-          setStudentAttendance(attendanceRes.data);
-        }
+
       } catch (error) {
         toast.error(error.response.data.message);
       } finally {
@@ -97,6 +98,7 @@ const AttendanceSystem = () => {
   useEffect(() => {
     if (view === 'daily' && date) {
       fetchAttendanceRecords();
+      fetchStudentAttendance();
     } else if (view === 'monthly' && month) {
       fetchMonthlyAttendance();
     }
@@ -104,13 +106,13 @@ const AttendanceSystem = () => {
 
   // Calculate statistics when records change
   useEffect(() => {
-    calculateStatistics();
+    if (user?.role !== 'student') calculateStatistics();
   }, [attendanceRecords]);
 
   const fetchClassStudents = async () => {
     try {
       setLoading(true);
-      const res = await api.get(`/class/${selectedClass}/students`);
+      const res = await api.get(`/enrollments/class/${selectedClass}/students`);
       setStudents(res.data);
     } catch (error) {
       toast.error(error.response.data.message);
@@ -119,33 +121,60 @@ const AttendanceSystem = () => {
     }
   };
 
-  const fetchAttendanceRecords = async () => {
+  const fetchStudentAttendance = async () => {
     try {
       setLoading(true);
-      let endpoint = `/attendance?date=${date}`;
-      if (selectedClass) endpoint += `&classId=${selectedClass}`;
-      if (user?.role === 'student') endpoint += `&studentId=${user.id}`;
-      if (user?.role === 'parent' && selectedChild) endpoint += `&studentId=${selectedChild}`;
-      
-      const res = await api.get(endpoint);
-      setAttendanceRecords(res.data.records || []);
-    } catch (error) {
-      toast.error(error.response.data.message);
+      let endpoint = `/attendance?studentId=${user?.id}&date=${date}`;
+      if (user?.role === 'student' && user?.id) {
+      const attendanceRes = await api.get(endpoint);
+      setStudentAttendance(attendanceRes.data?.data);
+      setError('');
+    }
+      } catch (error) {
+      setError(error.response.data.message)
+      toast.error(error);
+      setStudentAttendance([]);
     } finally {
       setLoading(false);
     }
   };
 
+  const fetchAttendanceRecords = async () => {
+    try {
+      setLoading(true);
+      let endpoint = `/attendance?date=${date}&classId=${selectedClass}`;
+      if (user?.role === 'parent' && selectedChild) endpoint += `&studentId=${selectedChild}`;
+      if (selectedClass || selectedChild) {
+      const res = await api.get(endpoint);
+      setAttendanceRecords(res.data?.data?.records || []);
+      setError('');  
+      }
+    } catch (error) {
+       setStats({
+        presentCount: 0,
+        absentCount: 0,
+        lateCount: 0,
+        attendanceRate: 0,
+        currentStreak: 0,
+        bestStreak: 0
+      });
+      setError(`${error.response.data.message} for ${moment(date).format('dddd, MMMM D, YYYY')}`);
+      toast.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
   const fetchMonthlyAttendance = async () => {
     try {
       setLoading(true);
-      let endpoint = `/attendance/monthly?month=${month}`;
-      if (selectedClass) endpoint += `&classId=${selectedClass}`;
+      let endpoint = `/attendance/monthly?month=${month}&classId=${selectedClass}`;
       if (user?.role === 'student') endpoint += `&studentId=${user.id}`;
       if (user?.role === 'parent' && selectedChild) endpoint += `&studentId=${selectedChild}`;
       
       const res = await api.get(endpoint);
-      setAttendanceRecords(res.data);
+      
+      setAttendanceRecords(res.data?.data?.students);
     } catch (error) {
       toast.error('Failed to load monthly attendance');
     } finally {
@@ -237,20 +266,25 @@ const AttendanceSystem = () => {
         student_id: student.id,
         student_name: `${student.first_name} ${student.last_name}`,
         date,
+        created_by: user?.id,
         class_id: selectedClass,
         status: bulkStatus,
-        remark: bulkStatus === 'absent' ? 'Bulk marked absent' : 
-                bulkStatus === 'late' ? 'Bulk marked late' : 'Bulk marked present'
+        remark: bulkStatus === 'absent' ? 'marked absent' : 
+                bulkStatus === 'late' ? 'marked late' : 'marked present'
       };
     });
-
+    
     setAttendanceRecords(updatedRecords);
-    setShowBulkActions(false);
-    toast.success(`Bulk status applied: ${bulkStatus}`);
+    toast.success(`status applied: ${bulkStatus}`);
   };
 
   const saveBulkChanges = async () => {
     try {
+      if (attendanceRecords.length == 0){
+        toast.error('Apply the status first');
+        document.getElementById('applyBtn').classList.add('bg-red-500')
+        return;
+      }
       if (!selectedClass || !date) {
         throw new Error('Class and date are required');
       }
@@ -260,7 +294,7 @@ const AttendanceSystem = () => {
       const response = await api.post('/attendance', {
         classId: selectedClass,
         date,
-        remark: `Bulk attendance for ${moment(date).format('LL')}`,
+        remark: `attendance for ${moment(date).format('LL')}`,
         records: attendanceRecords.map(record => ({
           studentId: record.student_id,
           status: record.status,
@@ -277,6 +311,7 @@ const AttendanceSystem = () => {
     } catch (error) {
       toast.error(error.message || 'Failed to save attendance');
     } finally {
+      setShowBulkActions(false);
       setLoading(false);
     }
   };
@@ -382,18 +417,26 @@ const AttendanceSystem = () => {
   };
 
   const renderAttendanceChart = () => {
+    
     if (view !== 'monthly') return null;
-
+    
     const labels = Array.from({ length: moment(month).daysInMonth() }, (_, i) => i + 1);
     
-    const presentData = labels.map(day => {
-      const dateStr = moment(month).date(day).format('YYYY-MM-DD');
-      return attendanceRecords.filter(r => r.date === dateStr && r.status === 'present').length;
+    const presentData = labels.map((day) => {
+      
+    return attendanceRecords.filter(
+      (student) => student.attendance[day] === 'present'
+    ).length;
+  });
+  
+    const absentData = labels.map(day => {
+      return attendanceRecords.filter(
+      (student) => student.attendance[day] === 'absent').length;
     });
 
-    const absentData = labels.map(day => {
-      const dateStr = moment(month).date(day).format('YYYY-MM-DD');
-      return attendanceRecords.filter(r => r.date === dateStr && r.status === 'absent').length;
+    const lateData = labels.map(day => {
+      return attendanceRecords.filter(
+      (student) => student.attendance[day] === 'late').length;
     });
 
     const data = {
@@ -410,7 +453,13 @@ const AttendanceSystem = () => {
           data: absentData,
           backgroundColor: '#EF4444',
           borderRadius: 4
-        }
+        },
+        {
+          label: 'late',
+          data: lateData,
+          backgroundColor: '#EFF555',
+          borderRadius: 4
+        },
       ]
     };
 
@@ -457,31 +506,128 @@ const AttendanceSystem = () => {
     );
   };
 
-  const renderStatusDistribution = () => {
-    if (view !== 'monthly') return null;
+  // const renderStatusDistribution = () => {
+  //   if (view !== 'monthly') return null;
 
-    const presentCount = attendanceRecords.filter(r => r.status === 'present').length;
-    const absentCount = attendanceRecords.filter(r => r.status === 'absent').length;
-    const lateCount = attendanceRecords.filter(r => r.status === 'late').length;
+  //   let presentCount = 0;
+  //   attendanceRecords.forEach(student => {
+  //     presentCount =+ student.presentCount
+  //   });
+  //   console.log(presentCount);
+    
+  //   const absentCount = attendanceRecords.filter(r => r.status === 'absent').length;
+  //   const lateCount = attendanceRecords.filter(r => r.status === 'late').length;
 
-    const data = {
-      labels: ['Present', 'Absent', 'Late'],
-      datasets: [
-        {
-          data: [presentCount, absentCount, lateCount],
-          backgroundColor: [
-            '#10B981',
-            '#EF4444',
-            '#F59E0B'
-          ],
-          borderWidth: 1
-        }
-      ]
-    };
+  //   const data = {
+  //     labels: ['Present', 'Absent', 'Late'],
+  //     datasets: [
+  //       {
+  //         data: [presentCount, absentCount, lateCount],
+  //         backgroundColor: [
+  //           '#10B981',
+  //           '#EF4444',
+  //           '#FFF555'
+  //         ],
+  //         borderWidth: 1
+  //       }
+  //     ]
+  //   };
 
-    return (
-      <div className="bg-white rounded-xl p-4 shadow-md">
-        <h3 className="text-lg font-semibold mb-4">Status Distribution</h3>
+  //   return (
+  //     <div className="bg-white rounded-xl p-4 shadow-md">
+  //       <h3 className="text-lg font-semibold mb-4">Status Distribution</h3>
+  //       <div className="h-64">
+  //         <Pie 
+  //           data={data} 
+  //           options={{
+  //             responsive: true,
+  //             maintainAspectRatio: false,
+  //             plugins: {
+  //               legend: {
+  //                 position: 'right',
+  //               },
+  //               tooltip: {
+  //                 callbacks: {
+  //                   label: (context) => {
+  //                     const label = context.label || '';
+  //                     const value = context.raw || 0;
+  //                     const total = context.dataset.data.reduce((a, b) => a + b, 0);
+  //                     const percentage = Math.round((value / total) * 100);
+  //                     return `${label}: ${value} (${percentage}%)`;
+  //                   }
+  //                 }
+  //               }
+  //             }
+  //           }}
+  //         />
+  //       </div>
+  //     </div>
+  //   );
+  // };
+const renderStatusDistribution = () => {
+  if (view !== 'monthly') return null;
+  
+  // Calculate total counts across all students
+  let totalPresent = 0;
+  let totalAbsent = 0;
+  let totalLate = 0;
+  let totalExcused = 0;
+
+  // Loop through each student and their attendance data
+  attendanceRecords.forEach(student => {
+    // Count statuses from the attendance object
+    Object.values(student.attendance || {}).forEach(status => {
+      if (status === 'present') totalPresent++;
+      else if (status === 'absent') totalAbsent++;
+      else if (status === 'late') totalLate++;
+      else if (status === 'excused') totalExcused++;
+    });
+  });
+
+  const data = {
+    labels: ['Present', 'Absent', 'Late', 'Excused'],
+    datasets: [
+      {
+        data: [totalPresent, totalAbsent, totalLate, totalExcused],
+        backgroundColor: [
+          '#10B981', // Green for present
+          '#EF4444', // Red for absent
+          '#F59E0B', // Amber for late (better contrast than yellow)
+          '#3B82F6'  // Blue for excused
+        ],
+        borderWidth: 1,
+        borderColor: '#ffffff'
+      }
+    ]
+  };
+
+  const totalRecords = totalPresent + totalAbsent + totalLate + totalExcused;
+
+  return (
+    <div className="bg-white rounded-xl p-4 shadow-md">
+      <h3 className="text-lg font-semibold mb-4">Class Status Distribution</h3>
+      
+      {/* Summary Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+        <div className="text-center p-2 bg-green-50 rounded-lg">
+          <div className="text-2xl font-bold text-green-600">{totalPresent}</div>
+          <div className="text-sm text-green-800">Present</div>
+        </div>
+        <div className="text-center p-2 bg-red-50 rounded-lg">
+          <div className="text-2xl font-bold text-red-600">{totalAbsent}</div>
+          <div className="text-sm text-red-800">Absent</div>
+        </div>
+        <div className="text-center p-2 bg-amber-50 rounded-lg">
+          <div className="text-2xl font-bold text-amber-600">{totalLate}</div>
+          <div className="text-sm text-amber-800">Late</div>
+        </div>
+        <div className="text-center p-2 bg-blue-50 rounded-lg">
+          <div className="text-2xl font-bold text-blue-600">{totalExcused}</div>
+          <div className="text-sm text-blue-800">Excused</div>
+        </div>
+      </div>
+
+      {totalRecords > 0 ? (
         <div className="h-64">
           <Pie 
             data={data} 
@@ -491,14 +637,17 @@ const AttendanceSystem = () => {
               plugins: {
                 legend: {
                   position: 'right',
+                  labels: {
+                    usePointStyle: true,
+                    padding: 15
+                  }
                 },
                 tooltip: {
                   callbacks: {
                     label: (context) => {
                       const label = context.label || '';
                       const value = context.raw || 0;
-                      const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                      const percentage = Math.round((value / total) * 100);
+                      const percentage = Math.round((value / totalRecords) * 100);
                       return `${label}: ${value} (${percentage}%)`;
                     }
                   }
@@ -507,18 +656,25 @@ const AttendanceSystem = () => {
             }}
           />
         </div>
-      </div>
-    );
-  };
+      ) : (
+        <div className="h-64 flex items-center justify-center text-gray-500">
+          No attendance data available
+        </div>
+      )}
+    </div>
+  );
+};
 
   const renderAdminTeacherView = () => (
     <div className="space-y-6">
       {/* Header and controls */}
+      
       <div className="flex flex-wrap gap-4 items-center justify-between">
         <div className="flex flex-wrap gap-4 items-center">
+          
           <select
             value={selectedClass || ''}
-            onChange={(e) => setSelectedClass(e.target.value || null)}
+            onChange={(e) => {setSelectedClass(e.target.value || null), fetchMonthlyAttendance()}}
             className="p-2 border rounded-lg bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="">Select Class</option>
@@ -533,7 +689,7 @@ const AttendanceSystem = () => {
             <button onClick={() => setView('daily')} className={`px-3 py-1 rounded-md transition-all ${view === 'daily' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-gray-100'}`}>
               Daily
             </button>
-            <button onClick={() => setView('monthly')} className={`px-3 py-1 rounded-md transition-all ${view === 'monthly' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-gray-100'}`}>
+            <button onClick={() => {setView('monthly'),fetchMonthlyAttendance()}} className={`px-3 py-1 rounded-md transition-all ${view === 'monthly' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-700 hover:bg-gray-100'}`}>
               Monthly
             </button>
           </div>
@@ -543,14 +699,14 @@ const AttendanceSystem = () => {
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="p-2 border rounded-lg bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="bg-gray-500 text-white p-2 border rounded-lgshadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-50"
             />
           ) : (
             <input
               type="month"
               value={month}
               onChange={(e) => setMonth(e.target.value)}
-              className="p-2 border rounded-lg bg-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="p-2 border rounded-lg bg-gray-500 text-white shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           )}
         </div>
@@ -599,6 +755,7 @@ const AttendanceSystem = () => {
             
             <div className="flex gap-2">
               <button
+                id='applyBtn'
                 onClick={applyBulkStatus}
                 className="flex items-center gap-2 px-4 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700"
               >
@@ -620,13 +777,16 @@ const AttendanceSystem = () => {
           </div>
         </div>
       )}
-      
+      {error && (
+        <div className='items-center text-center gap-2 px-4 py-1 bg-red-200'>{error}</div>
+        
+      )}
       {selectedClass ? (
         <div className="space-y-6">
-          {renderStatsCards()}
-          
           {view === 'daily' ? (
             <div className="bg-white rounded-xl shadow-md overflow-hidden">
+              {renderStatsCards()}
+          
               <div className="p-4 border-b flex justify-between items-center">
                 <h3 className="text-lg font-semibold">
                   {moment(date).format('dddd, MMMM D, YYYY')}
@@ -750,6 +910,7 @@ const AttendanceSystem = () => {
       )}
     </div>
   );
+
   const renderStudentView = () => (
     <div className="space-y-6">
       <div className="flex flex-wrap gap-4 items-center">
@@ -761,76 +922,83 @@ const AttendanceSystem = () => {
             Daily
           </button>
           <button
-            onClick={() => setView('monthly')}
+            onClick={() => {setView('monthly'), fetchMonthlyAttendance()}}
             className={`px-3 py-1 rounded ${view === 'monthly' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
           >
             Monthly
           </button>
         </div>
         
+        
         {view === 'daily' ? (
           <input
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="p-2 border rounded"
+            className="p-2 border rounded bg-gray-500 text-white"
           />
         ) : (
           <input
             type="month"
             value={month}
             onChange={(e) => setMonth(e.target.value)}
-            className="p-2 border rounded"
+            className="p-2 border rounded bg-gray-500 text-white"
           />
         )}
       </div>
-      
+      {error && (
+          <div className='px-4 py-1 bg-red-400 text-center'>{error} for {moment(date).format('dddd, MMMM D, YYYY')}</div>
+          
+          )}
       {view === 'daily' ? (
-        <div className="bg-white rounded-lg shadow p-6">
+        <div className={`${studentAttendance?.status === 'present' ? 'bg-[#10B981]' : studentAttendance?.status === 'absent' ? 'bg-[#EF4444]' : studentAttendance?.status === 'late' ? 'bg-[#EFF555]' : 'bg-blue-100'} rounded-lg shadow p-6`}>
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-bold">
               {moment(date).format('dddd, MMMM D, YYYY')}
             </h2>
             <div className="flex items-center gap-2">
-              <div className="w-10 h-10 rounded-full bg-gray-200"></div>
+              <div className="flex justify-center w-10 h-10 rounded-full bg-gray-200 items-center text-center">
+                {user?.firstName.charAt(0) + user?.lastName.charAt(0)}
+              </div>
               <div>
                 <div className="font-medium">{user?.firstName} {user?.lastName}</div>
                 <div className="text-sm text-gray-500">ID: {user?.studentId}</div>
               </div>
             </div>
           </div>
-          
-          {attendanceRecords.length > 0 ? (
+                
+          {studentAttendance?.id ? (
             <div className="space-y-4">
-              {attendanceRecords.map(record => (
-                <div key={record.id} className="border rounded-lg p-4">
+              {/* {attendanceRecords.map(record => ( */}
+                
+                <div key={studentAttendance.id} className="border rounded-lg p-4">
                   <div className="flex justify-between items-center">
                     <div>
                       <div className="font-medium">
-                        {record.class_name} - Grade {record.grade_level}
+                        Grade - {studentAttendance?.class_name}
                       </div>
-                      <div className={`inline-block px-3 py-1 rounded-full text-sm mt-2 ${
-                        record.status === 'present' ? 'bg-green-100 text-green-800' :
-                        record.status === 'absent' ? 'bg-red-100 text-red-800' :
-                        record.status === 'late' ? 'bg-yellow-100 text-yellow-800' :
+                      <div className={`capitalize inline-block px-3 py-1 rounded-full text-sm mt-2 ${
+                        studentAttendance?.status === 'present' ? 'bg-[#10B981] text-green-700' :
+                        studentAttendance?.status === 'absent' ? 'bg-[#EF4444] text-red-700' :
+                        studentAttendance?.status === 'late' ? 'bg-[#EFF555] text-yellow-700' :
                         'bg-blue-100 text-blue-800'
                       }`}>
-                        {record.status}
+                        {studentAttendance?.status}
                       </div>
                     </div>
                     <div className="text-right">
                       <div className="text-sm text-gray-500">
-                        {moment(record.date).format('h:mm A')}
+                        Attendance Taken - {moment(studentAttendance?.date).format('h:mm A')}
                       </div>
                     </div>
                   </div>
-                  {record.remark && (
-                    <div className="mt-3 p-3 bg-gray-50 rounded">
-                      <p className="text-sm">{record.remark}</p>
+                  {studentAttendance?.remark && (
+                    <div className="mt-3 p-3rounded text-cente">
+                      <p className="text-sm capitalize">{studentAttendance?.remark}</p>
                     </div>
                   )}
                 </div>
-              ))}
+              {/* ))} */}
             </div>
           ) : (
             <div className="text-center py-8 text-gray-500">
@@ -842,6 +1010,7 @@ const AttendanceSystem = () => {
         <MonthlyAttendanceCalendar 
           records={attendanceRecords} 
           month={month}
+          id={user?.id}
         />
       )}
     </div>
@@ -883,14 +1052,14 @@ const AttendanceSystem = () => {
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="p-2 border rounded"
+            className="p-2 border rounded bg-gray-500 text-white"
           />
         ) : (
           <input
             type="month"
             value={month}
             onChange={(e) => setMonth(e.target.value)}
-            className="p-2 border rounded"
+            className="p-2 border rounded bg-gray-500 text-white"
           />
         )}
       </div>
@@ -971,7 +1140,7 @@ const AttendanceSystem = () => {
   return (
     <div className="container mx-auto p-4 md:p-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold text-gray-800">Attendance System</h1>
+        <h2 className="text-2xl md:text-3xl font-bold text-gray-800">Attendance Management</h2>
         <div className="text-sm text-gray-500">
           {user?.role === 'admin' ? 'Administrator' : 
            user?.role === 'teacher' ? 'Teacher' : 
@@ -1006,29 +1175,43 @@ const AttendanceSystem = () => {
 const MonthlyAttendanceView = ({ students, records, month }) => {
   const daysInMonth = moment(month).daysInMonth();
   const monthName = moment(month).format('MMMM YYYY');
-  
+
   // Calculate summary statistics
-  const summary = students.map(student => {
-    const studentRecords = records.filter(r => r.student_id === student.id);
+  const summary = students.map(student => {    
+    const studentRecords = records.filter(r => r.id === student.id);
+    
     return {
       id: student.id,
       name: `${student.first_name} ${student.last_name}`,
       studentId: student.student_id,
-      present: studentRecords.filter(r => r.status === 'present').length,
-      absent: studentRecords.filter(r => r.status === 'absent').length,
-      late: studentRecords.filter(r => r.status === 'late').length,
-      excused: studentRecords.filter(r => r.status === 'excused').length,
+      present: studentRecords[0].presentCount || 0,
+      absent: studentRecords[0].absentCount || 0,
+      late: studentRecords[0].lateCount || 0,
+      excused: studentRecords[0].excusedCount || 0,
+      totalDays: studentRecords[0].totalDays || 0,
       records: studentRecords
     };
   });
-
   return (
     <div className="bg-white rounded-xl shadow-md overflow-hidden">
       <div className="p-4 border-b">
         <h3 className="text-lg font-semibold">{monthName} Attendance Details</h3>
         <p className="text-sm text-gray-500">Daily status for each student</p>
       </div>
-      
+      <div className='flex items-center gap-2'>
+        <div className='flex items-center'>
+          <span className='w-2.5 h-2.5 rounded-full bg-[#10B981] mr-1'></span>
+          <span className='text-sm text-gray-500'>Present</span>
+        </div>
+        <div className='flex items-center'>
+          <span className='w-2.5 h-2.5 rounded-full bg-[#EF4444] mr-1'></span>
+          <span className='text-sm text-gray-500'>Absent</span>
+        </div>
+        <div className='flex items-center'>
+          <span className='w-2.5 h-2.5 rounded-full bg-[#EFF555] mr-1'></span>
+          <span className='text-sm text-gray-500'>Late</span>
+        </div>
+      </div>
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
@@ -1060,7 +1243,7 @@ const MonthlyAttendanceView = ({ students, records, month }) => {
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {summary.map(student => {
-              const totalDays = student.present + student.absent + student.late + student.excused;
+              const totalDays = student.totalDays;
               const attendanceRate = totalDays > 0 
                 ? Math.round((student.present / totalDays) * 100)
                 : 0;
@@ -1074,11 +1257,13 @@ const MonthlyAttendanceView = ({ students, records, month }) => {
                     <div className="text-xs text-gray-500">{student.studentId}</div>
                   </td>
                   
-                  {Array.from({ length: daysInMonth }).map((_, day) => {
-                    const date = moment(month).date(day + 1).format('YYYY-MM-DD');
-                    const record = student.records.find(r => r.date === date);
-                    const dayOfWeek = moment(date).day();
+                  {Array.from({ length: daysInMonth }).map((_, dayIndex) => {
+                    const day = dayIndex + 1;
                     
+                    const record = student?.records[0]?.attendance[day];
+                     // Get status from attendance object
+                    const date = moment(month).date(day).format('YYYY-MM-DD');
+                    const dayOfWeek = moment(date).day();                        
                     return (
                       <td 
                         key={day} 
@@ -1089,34 +1274,34 @@ const MonthlyAttendanceView = ({ students, records, month }) => {
                         {record ? (
                           <div 
                             className={`mx-auto w-6 h-6 rounded-full flex items-center justify-center ${
-                              record.status === 'present' ? 'bg-green-100 text-green-800' :
-                              record.status === 'absent' ? 'bg-red-100 text-red-800' :
-                              record.status === 'late' ? 'bg-yellow-100 text-yellow-800' :
+                              record === 'present' ? 'bg-green-100 text-green-800' :
+                              record === 'absent' ? 'bg-red-100 text-red-800' :
+                              record === 'late' ? 'bg-yellow-100 text-yellow-800' :
                               'bg-blue-100 text-blue-800'
                             }`}
-                            title={`${moment(date).format('ddd, MMM D')}: ${record.status}`}
+                            title={`${moment(date).format('ddd, MMM D')}: ${record}`}
                           >
-                            {record.status.charAt(0).toUpperCase()}
+                            {record.charAt(0).toUpperCase() || ''}
                           </div>
                         ) : (
                           <div 
-                            className="mx-auto w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-gray-400"
+                            className="text-2 mx-auto w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-gray-400"
                             title={`${moment(date).format('ddd, MMM D')}: No record`}
                           >
-                            -
+                            N/A
                           </div>
                         )}
                       </td>
                     );
                   })}
                   
-                  <td className="px-2 py-3 text-center text-sm font-medium text-green-600">
+                  <td className="px-2 py-3 text-center text-sm font-medium text-[#10B981]">
                     {student.present}
                   </td>
-                  <td className="px-2 py-3 text-center text-sm font-medium text-red-600">
+                  <td className="px-2 py-3 text-center text-sm font-medium text-[#EF4444]">
                     {student.absent}
                   </td>
-                  <td className="px-2 py-3 text-center text-sm font-medium text-yellow-600">
+                  <td className="px-2 py-3 text-center text-sm font-medium text-[#EFF555]">
                     {student.late}
                   </td>
                   <td className="px-2 py-3 text-center text-sm font-medium">
@@ -1138,34 +1323,38 @@ const MonthlyAttendanceView = ({ students, records, month }) => {
   );
 };
 
-const MonthlyAttendanceCalendar = ({ records, month }) => {
+const MonthlyAttendanceCalendar = ({ records, month, id }) => {
   const daysInMonth = moment(month).daysInMonth();
   const firstDay = moment(month).startOf('month').day();
   const monthName = moment(month).format('MMMM YYYY');
+  const record = records.filter(r => r.id === id);
   // Calculate summary statistics // filter(r => r.status === 'present').length
-  const presentDays = records.data?.records[0]?.presentCount;
-  const absentDays = records.data?.records[0]?.absentCount;
+  const presentDays = record[0]?.presentCount;
+  const absentDays = record[0]?.absentCount;
 
-  const lateDays = records.data?.records[0]?.lateCount;
-  const excusedDays = records.data?.records[0]?.excusedCount;
-  const totalDays = records.data?.records[0]?.totalDays;
-  const attendanceRate = records.data?.records[0]?.attendanceRate;
-
+  const lateDays = record[0]?.lateCount;
+  // const excusedDays = records.data?.records[0]?.excusedCount;
+  const totalDays = record[0]?.totalDays;
+  const attendanceRate = record[0]?.attendanceRate;
+  
   // Find current streak
   let currentStreak = 0;
   let tempStreak = 0;
-  const sortedRecords = [...records].sort((a, b) => new Date(a.date) - new Date(b.date));
-  
-  sortedRecords.forEach(record => {
-    if (record.status === 'present') {
-      tempStreak++;
-      if (tempStreak > currentStreak) {
+
+  // const sortedRecords = record[0]?.attendance;
+  // //[...record].sort((a, b) => new Date(a.date) - new Date(b.date));
+  // sortedRecords.map(record => {
+  for (let index = 1; index < daysInMonth + 1; index++) {
+    if (record[0]?.attendance[index] === 'present') {
+        tempStreak++;
+    }
+
+    if (tempStreak > currentStreak) {
         currentStreak = tempStreak;
       }
-    } else {
-      tempStreak = 0;
-    }
-  });
+
+  };
+
 
   return (
     <div className="space-y-4">
@@ -1187,36 +1376,40 @@ const MonthlyAttendanceCalendar = ({ records, month }) => {
               key={`empty-${i}`} 
               className="h-10 bg-gray-50 rounded"
             />
-          ))}
+            ))}
           
           {Array.from({ length: daysInMonth }).map((_, i) => {
+
             const date = moment(month).date(i + 1).format('YYYY-MM-DD');
-            const dayRecords = records.filter(r => r.date === date);
-            const isWeekend = moment(date).day() === 0 || moment(date).day() === 6;
+            const dayRecords = record[0]?.attendance[i+1];
             
+            
+            const isWeekend = moment(date).day() === 0 || moment(date).day() === 6;
+
+            const isToday = moment().date(i + 1).isSame(moment(), 'day');
+
             return (
               <div 
-                key={i} 
-                className={`h-12 border rounded flex flex-col items-center justify-center relative ${
-                  isWeekend ? 'bg-gray-50' : 'bg-white'
-                }`}
+              key={i} 
+              className={`${isToday ? 'bg-red-500' : ''} h-12 border rounded flex flex-col items-center justify-center relative 
+              ${isWeekend ? 'bg-gray-400' : 'bg-white'} `}
               >
-                <div className="text-xs absolute top-1 left-1">
-                  {i + 1}
+              <div className="text-xs absolute top-1 left-1">
+                {i + 1}
+              </div>
+              {dayRecords !== null && (
+                <div 
+                className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
+                  dayRecords === 'present' ? 'bg-green-800 text-green-100' :
+                  dayRecords === 'absent' ? 'bg-red-800 text-red-100' :
+                  dayRecords === 'late' ? 'bg-yellow-800 text-yellow-100' :
+                  'bg-blue-100 text-blue-800'
+                }`}
+                title={`${moment(date).format('ddd, MMM D')}: ${dayRecords}`}
+                >
+                {dayRecords.charAt(0).toUpperCase() || 'N/A'}
                 </div>
-                {dayRecords.length > 0 && (
-                  <div 
-                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
-                      dayRecords[0].status === 'present' ? 'bg-green-100 text-green-800' :
-                      dayRecords[0].status === 'absent' ? 'bg-red-100 text-red-800' :
-                      dayRecords[0].status === 'late' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-blue-100 text-blue-800'
-                    }`}
-                    title={`${moment(date).format('ddd, MMM D')}: ${dayRecords[0].status}`}
-                  >
-                    {dayRecords[0].status.charAt(0).toUpperCase()}
-                  </div>
-                )}
+              )}
               </div>
             );
           })}
@@ -1225,19 +1418,19 @@ const MonthlyAttendanceCalendar = ({ records, month }) => {
         <div className="flex flex-wrap gap-4 justify-between items-center">
           <div className="flex flex-wrap gap-4">
             <div className="flex items-center">
-              <div className="w-4 h-4 rounded-full bg-green-100 border border-green-300 mr-2"></div>
+              <div className="w-4 h-4 rounded-full bg-green-800 border border-green-300 mr-2"></div>
               <span className="text-sm">Present</span>
             </div>
             <div className="flex items-center">
-              <div className="w-4 h-4 rounded-full bg-red-100 border border-red-300 mr-2"></div>
+              <div className="w-4 h-4 rounded-full bg-red-800 border border-red-300 mr-2"></div>
               <span className="text-sm">Absent</span>
             </div>
             <div className="flex items-center">
-              <div className="w-4 h-4 rounded-full bg-yellow-100 border border-yellow-300 mr-2"></div>
+              <div className="w-4 h-4 rounded-full bg-yellow-800 border border-yellow-300 mr-2"></div>
               <span className="text-sm">Late</span>
             </div>
             <div className="flex items-center">
-              <div className="w-4 h-4 rounded-full bg-blue-100 border border-blue-300 mr-2"></div>
+              <div className="w-4 h-4 rounded-full bg-blue-800 border border-blue-300 mr-2"></div>
               <span className="text-sm">Excused</span>
             </div>
           </div>

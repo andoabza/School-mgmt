@@ -19,7 +19,7 @@ import Login from './pages/Login';
 import UserManagement from './components/UserManagement';
 import Scheduler from './components/Scheduler';
 import AttendanceTracker from './components/attendance/AttendanceTracker';
-import Gradebook from './components/Gradebook';
+import Gradebook from './components/GradeBook';
 import ParentPortal from './components/ParentPortal';
 import NotificationCenter from './components/NotificationCenter';
 import ClassManagement from './components/ClassManagement';
@@ -194,9 +194,9 @@ const TopNavigation = ({ setSidebarOpen, setNotificationOpen, notifications, use
       </button>
       <div className="flex-1 px-4 flex justify-between">
         <div className="flex-1 flex items-center">
-          <h1 className="text-xl font-semibold text-gray-900 capitalize">
+          <h3 className="text-xl font-semibold text-gray-900 capitalize">
             {location.pathname.split('/')[1] || 'Dashboard'}
-          </h1>
+          </h3>
         </div>
         <div className="ml-4 flex items-center md:ml-6 space-x-4">
           <button
@@ -347,6 +347,7 @@ const AppRoutes = ({ user, notifications }) => (
   <Routes>
     <Route path="/" element={<Dashboard user={user} notifications={notifications} />} />
     <Route path="/dashboard" element={<Dashboard user={user} notifications={notifications} />} />
+    <Route path="/login" element={<Navigate to="/dashboard" />} />
     <Route path="/profile" element={<ProfilePage />} />
     <Route path="/users" element={
       user.role === 'admin' ?
@@ -461,8 +462,8 @@ function App() {
     { key: 'users', icon: <UserIcon className="h-5 w-5" />, label: 'User Management', show: user.role === 'admin', path: '/users' },
     { key: 'schedule', icon: <CalendarIcon className="h-5 w-5" />, label: 'Class Schedule', show: ['admin', 'teacher', 'student'].includes(user.role), path: '/schedule' },
     { key: 'attendance', icon: <CheckCircleIcon className="h-5 w-5" />, label: 'Attendance', show: ['admin', 'teacher', 'student'].includes(user.role), path: '/attendance' },
-    { key: 'enrollment', icon: <ListBulletIcon className="h-5 w-5" />, label: 'Students', show: user.role === 'admin', path: '/student-enrollment' },
-    { key: 'enrollment', icon: <ListBulletIcon className="h-5 w-5" />, label: 'Teachers', show: user.role === 'admin', path: '/teacher-enrollment' },
+    { key: 'students enrollment', icon: <ListBulletIcon className="h-5 w-5" />, label: 'Students', show: user.role === 'admin', path: '/student-enrollment' },
+    { key: 'teachers enrollment', icon: <ListBulletIcon className="h-5 w-5" />, label: 'Teachers', show: user.role === 'admin', path: '/teacher-enrollment' },
     { key: 'grades', icon: <BookOpenIcon className="h-5 w-5" />, label: 'Gradebook', show: ['admin', 'teacher', 'student'].includes(user.role), path: '/grades' },
     { key: 'parent', icon: <UsersIcon className="h-5 w-5" />, label: 'Parent Portal', show: user.role === 'parent', path: '/parent' },
     { key: 'classes', icon: <HomeIcon className="h-5 w-5" />, label: 'Classes', show: ['admin', 'teacher'].includes(user.role), path: '/classes' },

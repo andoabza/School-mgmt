@@ -761,7 +761,7 @@ const deleteUsers = async (userIds = selectedUsers) => {
           <button
             onClick={fetchUsers}
             disabled={loading}
-            className="flex text-white items-center justify-center gap-2 bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+            className="flex text-white items-center justify-center gap-2 bg-gray-900 hover:bg-gray-800 text-gray-800 px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
           >
             {loading ? (
               <ArrowPathIcon className="h-5 w-5 animate-spin" />
@@ -791,7 +791,7 @@ const deleteUsers = async (userIds = selectedUsers) => {
           
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className="flex items-center text-white justify-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-2 rounded-lg transition-colors"
+            className="flex items-center justify-center text-white gap-2 bg-gray-900 hover:bg-gray-800 px-4 py-2 rounded-lg transition-colors"
           >
             <FunnelIcon className="h-5 w-5" />
             Filters

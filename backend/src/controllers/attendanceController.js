@@ -4,6 +4,7 @@ import Attendance from "../models/Attendance.js";
 const attendanceController = {
   saveAttendance: async (req, res) => {
     const { classId, date, remark, records } = req.body;
+    
     const attendanceId = req.params.id;
 
     if (!classId || !date || !records) {

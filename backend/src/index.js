@@ -18,7 +18,8 @@ import attendanceRoutes from './routes/attendanceRoutes.js';
 import teacherRoutes from './routes/teacherRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import parentRoutes from './routes/parentRoutes.js';
-
+import gradesRoutes from './routes/grades.js';
+import analyticsRoutes from './routes/analytics.js'
 const app = express();
 
 app.use(morgan('dev'));
@@ -45,7 +46,8 @@ app.use('/api/enrollments', enrollmentRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/teacher', teacherRoutes);
 app.use('/api/parents', parentRoutes);
-
+app.use('/api/grades', gradesRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 
 // Error handling middleware

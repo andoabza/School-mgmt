@@ -146,7 +146,7 @@ class UserController {
         lastName: user.last_name
       };
 
-      res.status(200).json({
+      res.status(201).json({
         token,
         user: userData
       });

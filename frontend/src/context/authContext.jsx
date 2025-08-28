@@ -51,7 +51,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const data = await loginUser(formData);
       
-      if (data?.token) {
+      if (data.token) {
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
         setUser(data.user);
@@ -59,13 +59,14 @@ export const AuthProvider = ({ children }) => {
         // Redirect to dashboard or intended path
         const redirectPath = location.state?.from?.pathname || '/dashboard';
         navigate(redirectPath);
-      } else{
-      setError('email or password incorrect!');
-      console.log(data);
-      return;
+      } else {
+        setError('email or password incorrect!');
+        toast.error('email or password incorrect!');
+        return false;
       }
     } catch (error) {
-      setError('Login failed. Please try again.');
+      setError('email or password incorrect!');
+      alert('email or password incorrect!');
     }
   };
 

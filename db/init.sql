@@ -63,25 +63,6 @@ CREATE TABLE student_parents (
 );
 
 
--- CREATE TABLE attendance (
---     id SERIAL PRIMARY KEY,
---     class_id INTEGER NOT NULL REFERENCES classes(id),
---     attendance_date DATE NOT NULL,
---     remark TEXT,
---     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
---     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
---     UNIQUE (class_id, date)
--- );
-
--- CREATE TABLE attendance_records (
---     id SERIAL PRIMARY KEY,
---     attendance_id INTEGER NOT NULL REFERENCES attendance(id),
---     student_id INTEGER NOT NULL REFERENCES students(id),
---     status VARCHAR(10) NOT NULL CHECK (status IN ('present', 'absent', 'late', 'excused')),
---     details TEXT,
---     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
--- );
-
 CREATE TABLE attendance (
     id SERIAL PRIMARY KEY,
     class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
@@ -123,3 +104,36 @@ CREATE TABLE class_teachers (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (class_id, teacher_id, subject)
 );
+
+CREATE TABLE teacher_settings (
+    id SERIAL PRIMARY KEY,
+    teacher_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    grading_scale JSONB NOT NULL DEFAULT '{
+        "A": 90, "B": 80, "C": 70, "D": 60, "F": 0
+    }'::jsonb,
+    category_weights JSONB NOT NULL DEFAULT '{
+        "homework": 0.3, "classwork": 0.2, "assessment": 0.4, "project": 0.1
+    }'::jsonb,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(teacher_id)
+);
+
+-- Grades table
+CREATE TABLE grades (
+    id SERIAL PRIMARY KEY,
+    student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    class_id INTEGER NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
+    assignment_name VARCHAR(255) NOT NULL,
+    score DECIMAL(5,2) NOT NULL CHECK (score >= 0),
+    max_score DECIMAL(5,2) NOT NULL CHECK (max_score > 0),
+    grade_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(student_id, class_id, assignment_name)
+);
+
+-- Create indexes for better performance
+CREATE INDEX idx_grades_student_id ON grades(student_id);
+CREATE INDEX idx_grades_class_id ON grades(class_id);
+CREATE INDEX idx_grades_assignment ON grades(assignment_name);

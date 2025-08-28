@@ -37,6 +37,7 @@ export default function Login() {
       if (!validateForm()) return;
       setLoading(true);
       await login(formData);
+      setLoading(false);
       };
 
   return (

@@ -60,6 +60,50 @@ class Teacher {
     );
     return rows;
   }
+  static async getSetting(teacherId) {
+    const { rows } = pool.query(
+      `SELECT * FROM teacher_settings WHERE teacher_id = $1`,
+      [teacherId]
+    );
+    
+    if (!rows) {
+      // Return default settings if none exist
+      return {
+        gradingScale: { A: 90, B: 80, C: 70, D: 60, F: 0 },
+        categoryWeights: { homework: 0.3, classwork: 0.2, assessment: 0.4, project: 0.1 }
+      }
+    }
+    return rows;
+  }
+
+  static async setSetting(teacherId, gradingScale, categoryWeights) {
+    const existingSettings = pool.query(
+      `SELECT * FROM teacher_settings WHERE teacher_id = $1`,
+      [teacherId]
+    );
+    
+    let result;
+    if (existingSettings.rows.length > 0) {
+      // Update existing settings
+      result = await db.query(
+        `UPDATE teacher_settings 
+         SET grading_scale = $1, category_weights = $2, updated_at = CURRENT_TIMESTAMP
+         WHERE teacher_id = $3 
+         RETURNING *`,
+        [gradingScale, categoryWeights, teacherId]
+      );
+      return result;
+    } else {
+      // Insert new settings
+      result = await db.query(
+        `INSERT INTO teacher_settings (teacher_id, grading_scale, category_weights)
+         VALUES ($1, $2, $3)
+         RETURNING *`,
+        [teacherId, gradingScale, categoryWeights]
+      );
+      return result
+    }
+  }
 }
 
 export default Teacher;

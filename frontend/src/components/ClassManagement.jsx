@@ -110,7 +110,7 @@ const ClassManagement = () => {
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
   const currentItems = filteredClasses.slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil(filteredClasses.length / itemsPerPage);
-
+  
   // Get teacher name by ID
   const getTeacherName = (teacherId) => {
     const teacher = teachers.find(t => t.id === teacherId);

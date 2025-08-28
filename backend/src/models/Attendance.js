@@ -35,6 +35,7 @@ class Attendance {
        RETURNING id`,
       [attendanceId, studentId, status, details]
     );
+    
     return rows[0];
   }
 
@@ -49,12 +50,13 @@ class Attendance {
     if (headerRes.rows.length === 0) return null;
     
     const recordsRes = await pool.query(
-      `SELECT ar.student_id, s.first_name, s.last_name, s.student_id as student_number,
+      `SELECT ar.student_id, u.first_name, u.last_name, s.student_id as student_number,
               ar.status, ar.details as remark
        FROM attendance_records ar
+       JOIN users u ON ar.student_id = u.id
        JOIN students s ON ar.student_id = s.id
        WHERE ar.attendance_id = $1
-       ORDER BY s.last_name, s.first_name`,
+       ORDER BY u.last_name, u.first_name`,
       [headerRes.rows[0].id]
     );
     
@@ -84,11 +86,12 @@ class Attendance {
     const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
     
     const studentsRes = await pool.query(
-      `SELECT s.id, s.first_name, s.last_name, s.student_id
+      `SELECT s.id, u.first_name, u.last_name, s.student_id
        FROM enrollment e
        JOIN students s ON e.student_id = s.id
+       JOIN users u ON s.id = u.id
        WHERE e.class_id = $1
-       ORDER BY s.last_name, s.first_name`,
+       ORDER BY u.last_name, u.first_name`,
       [classId]
     );
     
@@ -118,6 +121,8 @@ class Attendance {
       });
       
       const presentCount = Object.values(studentAttendance).filter(s => s === 'present').length;
+      const absentCount = Object.values(studentAttendance).filter(s => s === 'absent').length;
+      const lateCount = Object.values(studentAttendance).filter(s => s === 'late').length;
       const totalDays = Object.values(studentAttendance).filter(s => s !== null).length;
       const attendanceRate = totalDays > 0 ? Math.round((presentCount / totalDays) * 100) : 0;
       
@@ -125,10 +130,13 @@ class Attendance {
         ...student,
         attendance: studentAttendance,
         presentCount,
+        absentCount,
+        lateCount,
         totalDays,
         attendanceRate
       };
     });
+    
     
     return {
       month,
@@ -218,19 +226,20 @@ class Attendance {
       pool.query(`
         SELECT 
           s.student_id as "Student ID",
-          s.first_name as "First Name",
-          s.last_name as "Last Name",
+          u.first_name as "First Name",
+          u.last_name as "Last Name",
           ${Array.from({ length: 31 }, (_, i) => 
             `MAX(CASE WHEN to_char(a.attendance_date, 'DD') = '${String(i+1).padStart(2, '0')}' THEN ar.status ELSE NULL END) as "Day ${i+1}"`
           ).join(',')}
         FROM students s
         LEFT JOIN enrollment e ON s.id = e.student_id
         LEFT JOIN attendance_records ar ON s.id = ar.student_id
+        LEFT JOIN users u ON ar.student_id = u.id
         LEFT JOIN attendance a ON ar.attendance_id = a.id 
           AND to_char(a.attendance_date, 'YYYY-MM') = $2
         WHERE e.class_id = $1
-        GROUP BY s.id
-        ORDER BY s.last_name, s.first_name
+        GROUP BY s.student_id, u.last_name, u.first_name
+        ORDER BY u.last_name, u.first_name
       `, [classId, month])
       .then(res => {
         res.rows.forEach(row => csvStream.write(row));
@@ -242,11 +251,12 @@ class Attendance {
 
   static async getClassStudents(classId) {
     const { rows } = await pool.query(
-      `SELECT s.id, s.first_name, s.last_name, s.student_id, s.grade_level
+      `SELECT s.id, u.first_name, u.last_name, s.student_id, s.grade_level
        FROM enrollment e
        JOIN students s ON e.student_id = s.id
+       JOIN users u ON s.id = u.id
        WHERE e.class_id = $1
-       ORDER BY s.last_name, s.first_name`,
+       ORDER BY u.last_name, u.first_name`,
       [classId]
     );
     return rows;
